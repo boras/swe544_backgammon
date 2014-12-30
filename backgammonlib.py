@@ -40,6 +40,12 @@ def parseMsg(msg):
         """
         raise NotImplementedError
 
+def createHeartbeatMsg():
+        """
+        Prepares a ping msg to be sent to the client
+        """
+        return createEmptyMsg("SVPING")
+
 def createLoginMsg(username):
         """
         Prepares a login msg to be sent to the server

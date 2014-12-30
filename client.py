@@ -162,7 +162,8 @@ class Client(object):
                 # poll for user and server input, then call handleUserInput and handleServerInput
                 # after procesing input, then start polling again
                 while True:
-                        self.s.recv(1024)
+                        msg = self.s.recv(1024)
+                        print(msg)
 
         def handleUserInput(self):
                 """
@@ -346,10 +347,16 @@ class Client(object):
                 raise NotImplementedError
 
 def usage():
+        """
+        TODO: purpose of the method
+        """
         print('client.py -s <serverIP> -u <username>')
         sys.exit(-1)
 
 def parseArgs(argv):
+        """
+        TODO: purpose of the method
+        """
         serverIP = ''
         username = ''
 
@@ -372,8 +379,20 @@ def parseArgs(argv):
         #print('username is ' + username)
         return serverIP, username
 
+def checkUsername(username):
+        """
+        Check username according to the requirements.
+        A username may consist of English letters (case sensitive), numerals and underscore.
+        However, it can't start with anything other than English letters
+        """
+        return True
+
 if __name__ == "__main__":
         serverIP, username = parseArgs(sys.argv[1:])
+        if checkUsername(username) is False:
+                print('A username may consist of English letters (case sensitive), numerals and underscore.')
+                print("However, it can't start with anything other than English letters.")
+                sys.exit(-2)
         c = Client(serverIP, username)
         c.run()
 
