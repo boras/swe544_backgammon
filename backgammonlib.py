@@ -24,27 +24,36 @@ def getMsgHeader(msg):
         """
         TODO: purpose of the method
         """
+        #print('getMsgHeader: ', msg.split('\n'))
+        return msg.split('\n')[0]
+
         raise NotImplementedError
 
-def getMsgBody(msg):
+def getMsgBody(message):
         """
         TODO: purpose of the method
         Return as a list i.e. ['key', 'value', 'key', 'value', ...]
         """
         raise NotImplementedError
 
-def parseMsg(msg):
+def parseMsg(message):
         """
         TODO: purpose of the method
         Should return msgType and its key=value pair(s) if exists
         """
         raise NotImplementedError
 
-def createHeartbeatMsg():
+def createPingMsg():
         """
         Prepares a ping msg to be sent to the client
         """
         return createEmptyMsg("SVPING")
+
+def createPongMsg():
+        """
+        Prepares a pong msg to be sent to the server
+        """
+        return createEmptyMsg("CLPONG")
 
 def createLoginMsg(username):
         """

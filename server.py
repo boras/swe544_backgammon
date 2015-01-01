@@ -5,31 +5,37 @@ from threading import Event
 from backgammonlib import *
 import os
 import time
+import Queue
+import select
 import select
 
+# Global Variables
+# userList is the server-wide list of users userList is accessed by different threads
+# Therefore, userListLock must be obtained before accessing it
 userList = {}
-#clientSocketList = []
-heartbeat = 10.0
+userListLock = threading.Lock()
+clientPongWinOpen = False
+commServerAddr='./CommServer_uds_socket'
 
-class Heartbeat(threading.Thread):
+class CommServer(threading.Thread):
         """
-        Representation of a backgammon user
+        TODO: purpose of the class
         """
-        def __init__(self, backtobackMissingCount=2, delayTime=5, heartbeat=30):
+
+        def __init__(self, queue, nofActiveUsers, serverAddr=commServerAddr):
                 """
                 TODO: purpose of the method
                 """
                 threading.Thread.__init__(self)
-                self.heartbeat = heartbeat
-                self.backtobackMissingCount = backtobackMissingCount
-                self.delayTime = delayTime
-                self.sleepTime = 1
-                self.remainingTime = 0
-                self.serverAddr = './heartbeat_uds_socket'
-                self.userList = {}
-                self.udsSock = -1
+                self.queue = queue
+                self.nofActiveUsers = nofActiveUsers
+                self.serverAddr = serverAddr
+                self.serverUdsSock = -1
 
         def setup(self):
+                """
+                TODO: purpose of the method
+                """
                 # Make sure the socket does not already exist
                 try:
                         os.unlink(self.serverAddr)
@@ -38,171 +44,269 @@ class Heartbeat(threading.Thread):
                                 raise
                 # Create a UDS socket
                 try:
-                        self.udsSock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                        self.udsSock.bind(self.serverAddr)
-                        self.udsSock.listen(10)
-                        #self.udsSock.setblocking(0)
-                except socket.error as msg:
-                        print(msg)
-                        self.udsSock.close()
+                        self.serverUdsSock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                        self.serverUdsSock.bind(self.serverAddr)
+                        self.serverUdsSock.listen(self.nofActiveUsers)
+                        #self.serverUdsSock.setblocking(0) # non-blocking socket
+                except socket.error as err:
+                        print(err)
+                        if self.serverUdsSock != -1:
+                                self.serverUdsSock.close()
                         return False
                 return True
 
         def run(self):
-                print('Heartbeat object')
+                """
+                TODO: purpose of the method
+                """
                 if self.setup() is False:
-                        return False
+                        print('CommServer setup() failed')
+                        return
                 while True:
-                        sleep(self.sleepTime)
+                        userUdsSock, userAddr = self.serverUdsSock.accept()
+                        username = userUdsSock.recv(64)
+                        print('CommServer: ', username)
+                        self.queue.put((username, userUdsSock))
+
+class Heartbeat(threading.Thread):
+        """
+        Representation of a backgammon user
+        """
+
+        def __init__(self, queue, heartbeat=10, backtobackMissingCount=2, delayTime=2):
+                """
+                TODO: purpose of the method
+                """
+                threading.Thread.__init__(self)
+                self.queue = queue
+                self.heartbeat = heartbeat
+                self.backtobackMissingCount = backtobackMissingCount
+                self.delayTime = delayTime
+                self.sleepTime = 1
+                self.remainingTime = 0
+
+        def sendHeartbeatMsg(self):
+                """
+                TODO: purpose of the method
+                """
+                msg = createPingMsg()
+                # TODO: userList is global and needs locking
+                userListLock.acquire()
+                for user in userList:
+                        s = userList[user][0].getUserSock()
+                        print('sendHeartbeatMsg to ' + str(userList[user][0]))
+                        try:
+                                s.send(msg)
+                        except socket.error as err:
+                                #print(msg)
+                                #print(err)
+                                pass
+                userListLock.release()
+
+        def run(self):
+                """
+                TODO: purpose of the method
+                """
+                while True:
+                        time.sleep(self.sleepTime)
                         self.remainingTime += self.sleepTime
+                        # check if a new user connected to the server
+                        try:
+                                userInfo = self.queue.get(False)
+                                print('Heartbeat: ', userInfo)
+                                username = userInfo[0]
+                                udsSock = userInfo[1]
+                                #udsSock.send('msg from Heartbeat to ' + username)
+                                userListLock.acquire()
+                                userList[username].append(udsSock)
+                                event = userList[username][0].getEvent()
+                                event.set()
+                                userListLock.release()
+                        except Queue.Empty:
+                                pass
+                        # Check 30 seconds expired (approximately)
                         if self.remainingTime >= self.heartbeat:
+                                global clientPongWinOpen
                                 self.remainingTime = 0
-                connection, client_address = self.udsSock.accept()
-                msg = connection.recv(16)
-                print(msg)
+                                self.sendHeartbeatMsg()
+                                self.checkTimer = Timer(self.delayTime, self.checkUsers)
+                                clientPongWinOpen = True
+                                self.checkTimer.start()
 
         def checkUsers(self):
-                count = self.backtobackMissingCount
-                informedUsers = {}
+                """
+                TODO: purpose of the method
+                """
+                global clientPongWinOpen
+                clientPongWinOpen = False
+
+                userListLock.acquire()
                 for userEntry in userList:
-                        # user pinged
-                        if userEntry[1] == -1:
-                                userEntry[1] = 0
-                        else:
-                                userEntry[1] += 1
-                        if userEntry[1] == count:
-                                informedUsers[userEntry[0]] = 'dead'
-
-        #def addUser(self, username, userObject):
-                #print('addUser')
-                #userEntry = []
-                #count = 0
-                #userEntry.append(userObject)
-                #userEntry.append(count)
-                ##time = self.remainingTime + self.delayTime
-                ##t = Timer(time, self.checkUsers)
-                ##userEntry.append(t)
-                ##t.start()
-                ##self.userList[username] = userEntry
-
-        #def wakeUp(self, username):
-                #print('wakeUp')
-
-        def ping(self, username):
-                userEntry = self.userList[username]
-                userEntry[1] = -1
-
-def sendHeartbeatMsg():
-        #print("heartbeat")
-        msg = createHeartbeatMsg()
-        #print(msg)
-        for user in userList:
-                userList[user].s.send(msg)
-        t = Timer(heartbeat, sendHeartbeatMsg)
-        t.start()
-
-t = Timer(heartbeat, sendHeartbeatMsg)
-t.start()
-
-#s = socket.socket()
-#s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-#host = socket.gethostname()
-#port = 10001
-#print('My IP address: ' + host)
-#s.bind((host, port))
-#s.listen(5)
-
-#while True:
-        #c, addr = s.accept()
-        #print('Got connection from', addr)
-        ##c.send('Thank you for connection!')
-        #msg = c.recv(1024)
-        #print(msg)
-        ##print(handleLoginRequest(msg))
-        #result, username = handleLoginRequest(msg)
-        #if result is False:
-                #print('FAIL: ' + str(username) + ' already exists. Choose another username')
-        #else:
-                #print('OK: ' + str(username) + '. You are logged in to the server')
-        #c.send(sendLoginResponse(result))
-        ##c.close()
-
+                        user = userList[userEntry][0]
+                        try:
+                                udsSock = userList[userEntry][1]
+                                if user.update_pongMissingCount() ==self.backtobackMissingCount:
+                                        udsSock.send('dead')
+                                print('checkUsers: ' + user.username + ": "
+                                      + str(user.getMissingCount()))
+                        except IndexError:
+                                # Heartbeat hasn't had a chance to append it to
+                                # userList entry yet. Don't check that user
+                                pass
+                userListLock.release()
 
 class User(threading.Thread):
         """
         Representation of a backgammon user
         """
-        def __init__(self, csock, addr, heartbeat):
+
+        def __init__(self, csock, addr, heartbeat, serverAddr=commServerAddr):
                 """
                 TODO: purpose of the method
                 """
                 threading.Thread.__init__(self)
-                self.s = csock
+                self.userSock = csock
                 self.addr = addr
+                self.heartbeat = heartbeat
+                self.serverAddr = serverAddr
+                self.userUdsSock =-1
                 self.userType = 'unknown'
                 self.username = 'unknown'
                 self.event = Event()
-                self.heartbeat = heartbeat
-                #self.serverAddr = 'server@' + username
+                self.pongMissingCount = 0
+                self.poller = -1
+                self.fdToSocket = {}
+
+        def connectToCommServer(self):
+                """
+                TODO: purpose of the method
+                """
+                self.userUdsSock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.userUdsSock.connect(self.serverAddr)
+                self.userUdsSock.send(self.username)
+                #msg = self.userUdsSock.recv(128)
+                #print('importante: ' + str(msg))
+                # Sync with Heartbeat before going further
+                self.event.wait()
 
         def run(self):
+                """
+                TODO: purpose of the method
+                """
                 print('Got connection from', self.addr)
-                msg = self.s.recv(1024)
+                msg = self.userSock.recv(1024)
                 print(msg)
                 #print(handleLoginRequest(msg))
                 self.username = self.handleLoginRequest(msg)
+                userListLock.acquire()
                 if userList.get(self.username) is None:
-                        #userList[self.username] = 'CONNECTED'
-                        userList[self.username] = self
+                        userEntry = []
+                        userEntry.append(self)
+                        userList[self.username] = userEntry
                         self.state = 'CONNECTED'
-                        print('OK: ' + str(self.username) + '. You are logged in to the server')
+                        print('OK: ' + str(self.username) +
+                              '. You are logged in to the server')
                         result = True
                 else:
                         print('FAIL: ' + str(self.username) + ' already exists.')
                         result = False
-                self.s.send(self.sendLoginResponse(result))
+                userListLock.release()
+                self.userSock.send(self.sendLoginResponse(result))
                 if result is False:
-                        self.s.close()
+                        self.userSock.close()
                         return
-                #self.setupHeartbeatSock()
-                # setup timer
-                # First learn the remaining time from Heartbeat and then add 5 sn
-                # if CLPONG is received before timer expires, then set ping = 1
-                # otherwise set it to ping = 0
-                # When timer expires, check ping
-                # if ping == 1, then count = 0
-                # if ping == 0, then count = count + 1
-                # if count == 2, then client is dead, remove it from userList and close the socket
-                # terminate thread
-                #self.event.wait()
-                #print(self.username + " is leaving")
-                #self.s.close()
 
-                #self.createUDS()
-                #connection, client_address = self.udsSock.accept()
-                #self.s.recv(1024)
-                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                sock.connect('./heartbeat_uds_socket')
-                sock.send('bora geliyor')
-                #self.heartbeat.addUser(self.username, self)
-                #self.heartbeat.wakeUp(self.username)
+                # Connect to CommServer and send username
+                self.connectToCommServer()
 
-                # select for unix domain socket and client socket s
-                #self.s.close()
+                # TODO: select for unix domain socket and client socket
+                READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
+                self.poller = select.poll()
+                self.fdToSocket[self.userSock.fileno()] = self.userSock
+                self.fdToSocket[self.userUdsSock.fileno()] = self.userUdsSock
+                self.poller.register(self.userSock, READ_ONLY)
+                self.poller.register(self.userUdsSock, READ_ONLY)
+                out = False
+                while True:
+                        events = self.poller.poll()
+                        for fd, flag in events:
+                                s = self.fdToSocket[fd]
+                                if flag & (select.POLLIN | select.POLLPRI):
+                                        if s is self.userUdsSock:
+                                                msg = self.userUdsSock.recv(128)
+                                                if msg == 'dead':
+                                                        print(self.username + ' is dead')
+                                                        userListLock.acquire()
+                                                        u = userList.pop(self.username, None)
+                                                        if u is None:
+                                                                print(self.username +
+                                                                      'is not in userList')
+                                                        userListLock.release()
+                                                        out = True
+                                                        break
+                                        if s is self.userSock:
+                                                self.handleUserMsg()
+                        if out is True:
+                                break
 
-        #def createUDS(self):
-                ## Make sure the socket does not already exist
-                #try:
-                        #os.unlink(self.serverAddr)
-                #except OSError:
-                        #if os.path.exists(self.serverAddr):
-                                #raise
-                ## Create a UDS socket
-                #self.udsSock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                #self.udsSock = socket.bind(serverAddr)
-                #self.udsSock.listen(1)
+                # cleanup
+                for entry in self.fdToSocket:
+                        sock = self.fdToSocket[entry]
+                        self.poller.unregister(sock)
+                self.userSock.close()
+                self.userUdsSock.close()
+
+        def handleUserMsg(self):
+                """
+                TODO: purpose of the method
+                """
+                msg = self.userSock.recv(1024)
+                #print('handleUserMsg: ', msg)
+                header = getMsgHeader(msg)
+                if header == 'CLPONG':
+                        self.handlePongResponse()
+                elif header == '':
+                        self.poller.unregister(self.userSock)
+                        self.fdToSocket.pop(self.userSock.fileno())
+
+        def handlePongResponse(self):
+                """
+                TODO: purpose of the method
+                """
+                global clientPongWinOpen
+                if clientPongWinOpen is True:
+                        self.pongMissingCount = -1
+
+        def update_pongMissingCount(self):
+                """
+                TODO: purpose of the method
+                """
+                self.pongMissingCount += 1
+                return self.pongMissingCount
+
+        def getMissingCount(self):
+                """
+                TODO: purpose of the method
+                """
+                return self.pongMissingCount
+
+        def getUserSock(self):
+                """
+                TODO: purpose of the method
+                """
+                return self.userSock
+
+        def getEvent(self):
+                """
+                TODO: purpose of the method
+                """
+                return self.event
 
         def handleLoginRequest(self, message):
+                """
+                TODO: purpose of the method
+                """
+
                 #print(message)
                 #print("=======")
                 userEntry = []
@@ -219,37 +323,60 @@ class User(threading.Thread):
                 return username
 
         def sendLoginResponse(self, result):
+                """
+                TODO: purpose of the method
+                """
                 if result is False:
                         msg = createLoginResponseMsg("fail")
                 else:
                         msg = createLoginResponseMsg("success")
                 return msg
 
-
+        def __str__(self):
+                """
+                TODO: purpose of the method
+                """
+                return self.username
 
 class Server(object):
         """
         Representation of a simple backgammon server
         """
-        def __init__(self, port=10001, backlog=5):
+
+        def __init__(self, port=10001, nofActiveUsers=1000):
                 """
                 Initialize server instance
                 """
                 self.port = port
-                self.backlog = backlog
+                self.nofActiveUsers = nofActiveUsers
 
-        def setup(self):
+        def setupSocket(self):
                 """
                 TODO: purpose of the method
                 """
                 self.s = socket.socket()
                 self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 self.host = socket.gethostname()
-                print('My IP address: ' + self.host + ' and port: ' + str(self.port))
+                print('Server IP address: ' + self.host + ' and port: ' + str(self.port))
                 self.s.bind((self.host, self.port))
-                self.s.listen(self.backlog)
-                self.heartbeat = Heartbeat()
+                self.s.listen(self.nofActiveUsers)
+
+        def setupThreading(self):
+                """
+                TODO: purpose of the method
+                """
+                self.queue = Queue.Queue()
+                self.CommServer = CommServer(self.queue, self.nofActiveUsers)
+                self.CommServer.start()
+                self.heartbeat = Heartbeat(self.queue)
                 self.heartbeat.start()
+
+        def setup(self):
+                """
+                TODO: purpose of the method
+                """
+                self.setupSocket()
+                self.setupThreading()
 
         def run(self):
                 """
@@ -262,6 +389,8 @@ class Server(object):
                         u = User(csock, addr, self.heartbeat)
                         u.start()
                 self.heartbeat.join()
+                self.CommServer.join()
+                # TODO: destroy self.queue is needed?
 
         def __str__(self):
                 """

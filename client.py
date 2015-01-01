@@ -9,8 +9,8 @@ def connectToServer(serverIP, username):
         port = 10001
         try:
                 s.connect((host, port))
-        except socket.error as msg:
-                print(msg)
+        except socket.error as err:
+                print(err)
                 s.close()
                 return
         print s.recv(1024)
@@ -53,6 +53,7 @@ class Client(object):
         received messages:empty body : SVRNOK, SVPING, STEARD
         received messages:filled body: SLRSPS, SREQRP, STDICE, SRJCTM, SMOVEC, SSTOVR, SGMOVR
         """
+
         def __init__(self, serverIP, username):
                 """
                 Initialize client instance
@@ -125,8 +126,8 @@ class Client(object):
                 self.s = socket.socket()
                 try:
                         self.s.connect((self.serverIP, self.port))
-                except socket.error as msg:
-                        print(msg)
+                except socket.error as err:
+                        print(err)
                         self.s.close()
                         return False
 
@@ -161,9 +162,21 @@ class Client(object):
                 # introduce a main loop here. If necessary move it to another method
                 # poll for user and server input, then call handleUserInput and handleServerInput
                 # after procesing input, then start polling again
+                response = ''
                 while True:
                         msg = self.s.recv(1024)
                         print(msg)
+                        header = getMsgHeader(msg)
+                        print('header: ' + header)
+                        if msg == '':
+                                break
+                        elif header == 'SVPING':
+                                print('creating pong msg')
+                                response = createPongMsg()
+                        self.s.send(response)
+
+                self.s.close()
+
 
         def handleUserInput(self):
                 """
