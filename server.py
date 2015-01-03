@@ -260,14 +260,19 @@ class User(threading.Thread):
                 """
                 TODO: purpose of the method
                 """
-                msg = self.userSock.recv(1024)
-                #print('handleUserMsg: ', msg)
-                header = getMsgHeader(msg)
+                rMsg = self.userSock.recv(1024)
+                #print('handleUserMsg: ', rMsg)
+                header = getMsgHeader(rMsg)
                 if header == 'CLPONG':
                         self.handlePongResponse()
                 elif header == '':
                         self.poller.unregister(self.userSock)
                         self.fdToSocket.pop(self.userSock.fileno())
+                else:
+                        print(rMsg)
+                        sMsg = createSvrnokMsg()
+                        print(sMsg)
+                        self.userSock.send(sMsg)
 
         def handlePongResponse(self):
                 """

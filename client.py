@@ -1,6 +1,7 @@
 import sys, getopt
 import socket
 from backgammonlib import *
+import select
 
 def connectToServer(serverIP, username):
         s = socket.socket()
@@ -76,6 +77,9 @@ class Client(object):
                 self.allowedMessages = {}
                 self.allowedUserCmds = {}
                 self.initUserCmds()
+                self.poller = -1
+                self.fdToObject = {}
+                self.userType = 'unknown'
 
         def initUserCmds(self):
                 """
@@ -158,27 +162,47 @@ class Client(object):
 
                 # TODO: print message here
                 print("Hi " + self.username)
+                self.firstScreen()
 
-                # introduce a main loop here. If necessary move it to another method
-                # poll for user and server input, then call handleUserInput and handleServerInput
-                # after procesing input, then start polling again
-                response = ''
+                READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
+                self.poller = select.poll()
+                self.fdToObject[self.s.fileno()] = self.s
+                self.fdToObject[sys.stdin.fileno()] = sys.stdin
+                self.poller.register(self.s, READ_ONLY)
+                self.poller.register(sys.stdin, READ_ONLY)
+                out = False
                 while True:
-                        msg = self.s.recv(1024)
-                        print(msg)
-                        header = getMsgHeader(msg)
-                        print('header: ' + header)
-                        if msg == '':
+                        events = self.poller.poll()
+                        for fd, flag in events:
+                                o = self.fdToObject[fd]
+                                if flag & (select.POLLIN | select.POLLPRI):
+                                        if o is self.s:
+                                                msg = self.s.recv(1024)
+                                                if self.handleServerInput(msg) is False:
+                                                        out = True
+                                                        break
+                                        if o is sys.stdin:
+                                                userInput = sys.stdin.readline()
+                                                self.handleUserInput(userInput)
+                        if out is True:
                                 break
-                        elif header == 'SVPING':
-                                print('creating pong msg')
-                                response = createPongMsg()
-                        self.s.send(response)
 
+                self.poller.unregister(self.s)
                 self.s.close()
 
+        def firstScreen(self):
+                """
+                TODO: purpose of the method
+                """
+                print("(1) Play")
+                print("(2) Watch")
+                #print("Enter either 1 or 2: ")
+                #sys.stdout.write("(1) Play\n")
+                #sys.stdout.write("(2) Watch\n")
+                sys.stdout.write("Enter either 1 or 2: ")
+                sys.stdout.flush()
 
-        def handleUserInput(self):
+        def handleUserInput(self, userInput):
                 """
                 Handles user input
 
@@ -188,9 +212,26 @@ class Client(object):
                         handleWatchingState if state is WATCHING
                         handleLeavingState if state is LEAVING
                 """
-                raise NotImplementedError
+                sMsg = False
+                try:
+                        if 1 == int(userInput):
+                                print('play')
+                                self.poller.unregister(sys.stdin)
+                                sMsg = createPlayRequest()
+                        elif 2 == int(userInput):
+                                print('watch')
+                                self.poller.unregister(sys.stdin)
+                                sMsg = createWatchRequest()
+                        else:
+                                print('Wrong input!')
+                                self.firstScreen()
+                except ValueError:
+                        print('Wrong input!')
+                        self.firstScreen()
+                if sMsg is not False:
+                        self.s.send(sMsg)
 
-        def handleServerInput(self):
+        def handleServerInput(self, rMsg):
                 """
                 Handles the messages sent by the server
 
@@ -202,7 +243,20 @@ class Client(object):
                         handleHeartbeat (SVPONG) if state is not IDLE
                         handleMove (SMOVEC) if state is PLAYING or state is WATCHING
                 """
-                raise NotImplementedError
+                #print(rMsg)
+                header = getMsgHeader(rMsg)
+                #print('header: ' + header)
+                sMsg = False
+                if rMsg == '':
+                        return False
+                elif header == 'SVPING':
+                        #print('creating pong rMsg')
+                        sMsg = createPongMsg()
+                        if sMsg is not False:
+                                self.s.send(sMsg)
+                else:
+                        print(rMsg)
+                return True
 
         def handleConnectedState(self):
                 """

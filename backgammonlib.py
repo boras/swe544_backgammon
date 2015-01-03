@@ -27,8 +27,6 @@ def getMsgHeader(msg):
         #print('getMsgHeader: ', msg.split('\n'))
         return msg.split('\n')[0]
 
-        raise NotImplementedError
-
 def getMsgBody(message):
         """
         TODO: purpose of the method
@@ -45,19 +43,25 @@ def parseMsg(message):
 
 def createPingMsg():
         """
-        Prepares a ping msg to be sent to the client
+        Prepares a ping (SVPING) msg to be sent to the client
         """
         return createEmptyMsg("SVPING")
 
+def createSvrnokMsg():
+        """
+        Prepares a svrnok (SVRNOK) msg to be sent to the client
+        """
+        return createEmptyMsg("SVRNOK")
+
 def createPongMsg():
         """
-        Prepares a pong msg to be sent to the server
+        Prepares a pong (CLPONG) msg to be sent to the server
         """
         return createEmptyMsg("CLPONG")
 
 def createLoginMsg(username):
         """
-        Prepares a login msg to be sent to the server
+        Prepares a login (CLOGIN) msg to be sent to the server
         userid: username
         """
         paramList = []
@@ -74,6 +78,39 @@ def createRequestMsg(request):
         paramList = []
         paramList.append("type")
         paramList.append(request)
+        #return createFilledMsg("CREQST", paramList)
+        return createFilledMsg("CREQST", paramList)
+
+def createPlayRequest():
+        """
+        Prepares a request msg to be sent to the server
+        request: play or watch or leave
+        """
+        paramList = []
+        paramList.append("type")
+        paramList.append('play')
+        #return createFilledMsg("CREQST", paramList)
+        return createFilledMsg("CREQST", paramList)
+
+def createWatchRequest():
+        """
+        Prepares a request msg to be sent to the server
+        request: play or watch or leave
+        """
+        paramList = []
+        paramList.append("type")
+        paramList.append('watch')
+        #return createFilledMsg("CREQST", paramList)
+        return createFilledMsg("CREQST", paramList)
+
+def createLeaveRequest():
+        """
+        Prepares a request msg to be sent to the server
+        request: play or watch or leave
+        """
+        paramList = []
+        paramList.append("type")
+        paramList.append('leave')
         #return createFilledMsg("CREQST", paramList)
         return createFilledMsg("CREQST", paramList)
 
