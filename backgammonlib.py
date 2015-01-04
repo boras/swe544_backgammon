@@ -117,6 +117,23 @@ def createFailResponseToPlayRequest():
         paramDict["result"] = 'fail'
         return createMsgWithFilledBody("SREQRP", paramDict)
 
+def createSuccessResponseToWatchRequest(gObject):
+        """
+        TODO: purpose of the method
+        gObject refers to a Game object/instance
+        """
+        paramDict = {}
+        paramDict["type"] = 'watch'
+        paramDict["result"] = 'success'
+        paramDict["player1"] = gObject.getp1Username()
+        paramDict["player2"] = gObject.getp2Username()
+        paramDict["player1_color"] = gObject.getp1Color()
+        paramDict["player2_color"] = gObject.getp2Color()
+        paramDict["score"] = gObject.getScore()
+        paramDict["player_turn"] = gObject.getTurn()
+        paramDict["boardstate"] = gObject.getBoard()
+        return createMsgWithFilledBody("SREQRP", paramDict)
+
 def createFailResponseToWatchRequest():
         """
         TODO: purpose of the method
