@@ -96,7 +96,7 @@ class Client(object):
                 """
                 Prepares and sends a login message to the server
                 """
-                msg = createLoginMsg(self.username)
+                msg = createLoginRequestMsg(self.username)
                 #print(msg)
                 self.s.send(msg)
 
@@ -162,7 +162,7 @@ class Client(object):
 
                 # TODO: print message here
                 print("Hi " + self.username)
-                self.firstScreen()
+                self.connectedScreen()
 
                 READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
                 self.poller = select.poll()
@@ -190,17 +190,57 @@ class Client(object):
                 self.poller.unregister(self.s)
                 self.s.close()
 
-        def firstScreen(self):
+        def disableInput(self):
+                """
+                TODO: purpose of the method
+                """
+                self.poller.unregister(sys.stdin)
+
+        def enableInput(self):
+                """
+                TODO: purpose of the method
+                """
+                self.poller.register(sys.stdin)
+
+        def connectedScreen(self):
                 """
                 TODO: purpose of the method
                 """
                 print("(1) Play")
                 print("(2) Watch")
-                #print("Enter either 1 or 2: ")
-                #sys.stdout.write("(1) Play\n")
-                #sys.stdout.write("(2) Watch\n")
-                sys.stdout.write("Enter either 1 or 2: ")
+                sys.stdout.write("> ")
                 sys.stdout.flush()
+
+        def failedPlayScreen(self):
+                """
+                TODO: purpose of the method
+                """
+                print("No opponent to play")
+                print("Waiting an opponent...")
+                print("(3) Leave")
+                sys.stdout.write("> ")
+                sys.stdout.flush()
+
+        def handleUserInputConnectedState(self, userInput):
+                """
+                TODO: purpose of the method
+                """
+                sMsg = False
+                try:
+                        if 1 == int(userInput):
+                                sMsg = createPlayRequest()
+                                self.disableInput()
+                                self.state = 'PLAY_REQ'
+                        elif 2 == int(userInput):
+                                self.disableInput()
+                                sMsg = createWatchRequest()
+                                self.state = 'WATCH_REQ'
+                        else:
+                                self.connectedScreen()
+                except ValueError:
+                        self.connectedScreen()
+                if sMsg is not False:
+                        self.s.send(sMsg)
 
         def handleUserInput(self, userInput):
                 """
@@ -212,24 +252,8 @@ class Client(object):
                         handleWatchingState if state is WATCHING
                         handleLeavingState if state is LEAVING
                 """
-                sMsg = False
-                try:
-                        if 1 == int(userInput):
-                                print('play')
-                                self.poller.unregister(sys.stdin)
-                                sMsg = createPlayRequest()
-                        elif 2 == int(userInput):
-                                print('watch')
-                                self.poller.unregister(sys.stdin)
-                                sMsg = createWatchRequest()
-                        else:
-                                print('Wrong input!')
-                                self.firstScreen()
-                except ValueError:
-                        print('Wrong input!')
-                        self.firstScreen()
-                if sMsg is not False:
-                        self.s.send(sMsg)
+                if self.state is 'CONNECTED':
+                        self.handleUserInputConnectedState(userInput)
 
         def handleServerInput(self, rMsg):
                 """
@@ -254,9 +278,35 @@ class Client(object):
                         sMsg = createPongMsg()
                         if sMsg is not False:
                                 self.s.send(sMsg)
+                elif header == 'SREQRP':
+                        self.handleRequestResponse(rMsg)
+                elif header == 'SVRNOK':
+                        print(rMsg)
+                        # TODO: check if they need to be removed or changed
+                        self.state = 'CONNECTED'
+                        self.enableInput()
                 else:
+                        print('unknown message from the server')
                         print(rMsg)
                 return True
+
+        def handleRequestResponse(self, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                print('handleRequestResponse')
+                print(rMsg)
+                paramDict = getMsgBody(rMsg)
+                request = paramDict['type']
+                if request == 'play' and self.state == 'PLAY_REQ':
+                        result = paramDict['result']
+                        if result == 'fail':
+                                print('result is fail')
+                                self.state = 'WAITING'
+                                self.enableInput()
+                                self.failedPlayScreen()
+                        elif result is 'success':
+                                print('NE MUTLU TURKUM DIYENE')
 
         def handleConnectedState(self):
                 """
@@ -291,17 +341,6 @@ class Client(object):
                 TODO: purpose of the method
                 Will be calling
                         sendLeaveRequest if state is WATCHING (CREQST)
-                """
-                raise NotImplementedError
-
-        def handleRequestResponse(self):
-                """
-                TODO: purpose of the method
-
-                Will be calling
-                        handlePlayResponse
-                        handleWatchResponse
-                        handleLeaveResponse
                 """
                 raise NotImplementedError
 
