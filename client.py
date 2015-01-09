@@ -3,6 +3,8 @@ import socket
 from backgammonlib import *
 import select
 
+rMsgSize = 1024
+
 def connectToServer(serverIP, username):
         s = socket.socket()
         #host = socket.gethostname()
@@ -14,7 +16,7 @@ def connectToServer(serverIP, username):
                 print(err)
                 s.close()
                 return
-        print s.recv(1024)
+        print s.recv(rMsgSize)
         paramList = []
         paramList.append(username)
         msg = createMsg("CLOGIN", paramList)
@@ -73,6 +75,7 @@ class Client(object):
                 self.serverIP = serverIP
                 self.port = 10001
                 self.username = username
+                self.s = -1
                 self.state = 'IDLE'
                 self.allowedMessages = {}
                 self.allowedUserCmds = {}
@@ -104,7 +107,7 @@ class Client(object):
                 """
                 Handles login response sent by the server
                 """
-                message = self.s.recv(1024)
+                message = self.s.recv(rMsgSize)
                 print(message)
 
                 msg = message
@@ -177,7 +180,7 @@ class Client(object):
                                 o = self.fdToObject[fd]
                                 if flag & (select.POLLIN | select.POLLPRI):
                                         if o is self.s:
-                                                msg = self.s.recv(1024)
+                                                msg = self.s.recv(rMsgSize)
                                                 if self.handleServerInput(msg) is False:
                                                         out = True
                                                         break
@@ -228,8 +231,8 @@ class Client(object):
                 sMsg = False
                 try:
                         if 1 == int(userInput):
-                                sMsg = createPlayRequest()
                                 self.disableInput()
+                                sMsg = createPlayRequest()
                                 self.state = 'PLAY_REQ'
                         elif 2 == int(userInput):
                                 self.disableInput()
@@ -275,9 +278,13 @@ class Client(object):
                         return False
                 elif header == 'SVPING':
                         #print('creating pong rMsg')
-                        sMsg = createPongMsg()
+                        #print('SVPING - '),
+                        paramDict = getMsgBody(rMsg)
+                        #print(paramDict["msgId"]),
+                        sMsg = createPongMsg(paramDict["msgId"])
                         if sMsg is not False:
                                 self.s.send(sMsg)
+                                #print(' - CLPONG')
                 elif header == 'SREQRP':
                         self.handleRequestResponse(rMsg)
                 elif header == 'SVRNOK':
@@ -305,7 +312,13 @@ class Client(object):
                                 self.state = 'WAITING'
                                 self.enableInput()
                                 self.failedPlayScreen()
-                        elif result is 'success':
+                        elif result == 'success':
+                                self.state = 'PLAYING'
+                                self.p = Player(self.serverIP, self.username, self.s, rMsg)
+                elif self.state is 'WAITING':
+                                self.state = 'PLAYING'
+                                self.p = Player(self.serverIP, self.username, self.s, rMsg)
+                elif request == 'watch' and self.state == 'WATCH_REQ':
                                 print('NE MUTLU TURKUM DIYENE')
 
         def handleConnectedState(self):
@@ -450,7 +463,37 @@ class Client(object):
                 """
                 TODO: purpose of the method
                 """
-                raise NotImplementedError
+                return self.username
+
+class Player(Client):
+        """
+        """
+        def __init__(self, serverIP, username, s, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                Client.__init__(self, serverIP, username)
+                print('Player::__init__')
+                #print(rMsg)
+                self.s = s
+                paramDict = getMsgBody(rMsg)
+                self.color = paramDict["color"]
+                self.turn = paramDict["turn"]
+                if int(self.turn) == 1:
+                        sMsg = createClientThrowDiceMsg()
+                        self.s.send(sMsg)
+
+        def handleServerInput(self, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                print('Player::handleServerInput')
+
+        def handleUserInput(self, userInput):
+                """
+                TODO: purpose of the method
+                """
+                print('Player::handleUserInput')
 
 def usage():
         """

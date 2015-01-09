@@ -7,7 +7,6 @@ import os
 import time
 import Queue
 import select
-import select
 import random
 
 # Global Variables
@@ -21,6 +20,7 @@ commServerAddr='./CommServer_uds_socket'
 rMsgSize = 1024
 rUdsMsgSize = 128
 
+# Classes
 class CommServer(threading.Thread):
         """
         TODO: purpose of the class
@@ -69,7 +69,7 @@ class CommServer(threading.Thread):
                 while True:
                         userUdsSock, userAddr = self.serverUdsSock.accept()
                         username = userUdsSock.recv(64)
-                        print('CommServer: ', username)
+                        #print('CommServer: ', username)
                         self.queue.put((username, userUdsSock))
 
 class Heartbeat(threading.Thread):
@@ -77,7 +77,7 @@ class Heartbeat(threading.Thread):
         Representation of a backgammon user
         """
 
-        def __init__(self, queue, heartbeat=10, backtobackMissingCount=2, delayTime=2):
+        def __init__(self, queue, heartbeat=10, backtobackMissingCount=2, delayTime=5):
                 """
                 TODO: purpose of the method
                 """
@@ -88,23 +88,29 @@ class Heartbeat(threading.Thread):
                 self.delayTime = delayTime
                 self.sleepTime = 1
                 self.remainingTime = 0
+                self.msgId = 1
 
         def sendHeartbeatMsg(self):
                 """
                 TODO: purpose of the method
                 """
-                msg = createPingMsg()
-                # TODO: userList is global and needs locking
+                sMsg = createPingMsg(self.msgId)
                 userListLock.acquire()
                 for user in userList:
                         s = userList[user][0].getUserSock()
-                        print('sendHeartbeatMsg to ' + str(userList[user][0]))
+                        print('sendHeartbeatMsg to ' + str(userList[user][0])
+                              + ': msgId=' + str(self.msgId))
                         try:
-                                s.send(msg)
+                                s.send(sMsg)
                         except socket.error as err:
-                                #print(msg)
+                                #print(sMsg)
                                 #print(err)
                                 pass
+                        finally:
+                                userList[user][0].setHeartbeatSent(True)
+                self.msgId += 1
+                if self.msgId == 100000:
+                        self.msgId = 1
                 userListLock.release()
 
         def run(self):
@@ -117,7 +123,7 @@ class Heartbeat(threading.Thread):
                         # check if a new user connected to the server
                         try:
                                 userInfo = self.queue.get(False)
-                                print('Heartbeat: ', userInfo)
+                                #print('Heartbeat: ', userInfo)
                                 username = userInfo[0]
                                 udsSock = userInfo[1]
                                 #udsSock.send('msg from Heartbeat to ' + username)
@@ -128,13 +134,13 @@ class Heartbeat(threading.Thread):
                                 userListLock.release()
                         except Queue.Empty:
                                 pass
-                        # Check 30 seconds expired (approximately)
+                        # Check heartbeat seconds expired (approximately)
                         if self.remainingTime >= self.heartbeat:
                                 global clientPongWinOpen
                                 self.remainingTime = 0
+                                clientPongWinOpen = True
                                 self.sendHeartbeatMsg()
                                 self.checkTimer = Timer(self.delayTime, self.checkUsers)
-                                clientPongWinOpen = True
                                 self.checkTimer.start()
 
         def checkUsers(self):
@@ -149,10 +155,13 @@ class Heartbeat(threading.Thread):
                         user = userList[userEntry][0]
                         try:
                                 udsSock = userList[userEntry][1]
-                                if user.update_pongMissingCount() ==self.backtobackMissingCount:
+                                if userList[userEntry][0].getHeartbeatSent() is False:
+                                        continue
+                                if user.update_pongMissingCount() == self.backtobackMissingCount:
                                         udsSock.send('dead')
                                 print('checkUsers: ' + user.username + ": "
                                       + str(user.getMissingCount()))
+                                userList[userEntry][0].setHeartbeatSent(False)
                         except IndexError:
                                 # Heartbeat hasn't had a chance to append it to
                                 # userList entry yet. Don't check that user
@@ -168,7 +177,7 @@ class WaitingRoom(object):
                 TODO: purpose of the method
                 """
                 self.waitingRoom = Queue.Queue()
-                self.deletedWaiters = {}
+                self.waitersList = {}
                 self.waitingRoomLock = threading.Lock()
 
         def addToWaitingRoom(self, username):
@@ -176,15 +185,25 @@ class WaitingRoom(object):
                 TODO: purpose of the method
                 """
                 # Queue is thread safe
+                #print('WaitingRoom: ' + username)
                 self.waitingRoom.put(username)
 
-        def markAsDeleted(self, username):
+        def markAsInvalid(self, username):
                 """
                 TODO: purpose of the method
                 """
                 # Dict is not thread safe
                 self.waitingRoomLock.acquire()
-                self.deletedWaiters[username] = 'deleted'
+                self.waitersList[username] = 'invalid'
+                self.waitingRoomLock.release()
+
+        def markAsValid(self, username):
+                """
+                TODO: purpose of the method
+                """
+                # Dict is not thread safe
+                self.waitingRoomLock.acquire()
+                self.waitersList[username] = 'valid'
                 self.waitingRoomLock.release()
 
         def getOpponent(self, username):
@@ -195,20 +214,22 @@ class WaitingRoom(object):
                         # Queue is thread safe
                         try:
                                 opponent = self.waitingRoom.get(False)
+                                #print('opponent name is ' + opponent)
                         except Queue.Empty:
+                                #print('WaitingRoom is empty')
                                 return False
-                        # There is someone in the waitingRoom but it might be 'deleted'
+                        # There is someone in the waitingRoom but it might be 'invalid'
                         self.waitingRoomLock.acquire()
-                        # check if it is marked as 'deleted'
-                        flag = self.deletedWaiters.get(opponent, None)
+                        # check if it is marked as 'invalid'
+                        flag = self.waitersList.get(opponent, None)
                         # there is a valid opponent
-                        if flag != 'deleted':
+                        if flag != 'invalid':
                                 self.waitingRoomLock.release()
                                 return opponent
                         else:
                                 # there is an opponent but marked as 'deleted'
-                                # remove it from deletedWaiters
-                                del self.deletedWaiters[opponent]
+                                # remove it from waitersList
+                                del self.waitersList[opponent]
                         self.waitingRoomLock.release()
 
 class GameList(object):
@@ -308,6 +329,8 @@ class Game(threading.Thread):
                 self.score = "0-0"
                 self.p1Points = 0
                 self.p2Points = 0
+                self.gameState = 'DICE'
+                self.gameName = self.p1Username + '_vs_' + self.p2Username
                 # TODO: it has to point to a Board object
                 self.board = 'board'
                 #
@@ -349,14 +372,14 @@ class Game(threading.Thread):
                 1 is white, 2 is black
                 """
                 while True:
-                        self.p1Color = random.choice(range(0,3))
+                        self.p1Color = random.choice(range(1,3))
                         self.p2Color = random.choice(range(1,3))
-                        print(self.p1.getUsername() + ': ' + str(self.p1Color))
-                        print(self.p2.getUsername() + ': ' + str(self.p2Color))
+                        #print(self.p1.getUsername() + ': ' + str(self.p1Color))
+                        #print(self.p2.getUsername() + ': ' + str(self.p2Color))
                         if self.p1Color != self.p2Color:
                                 break
-                print('out_of_loop: ' + self.p1.getUsername() + ': ' + str(self.p1Color))
-                print('out_of_loop: ' + self.p2.getUsername() + ': ' + str(self.p2Color))
+                #print('out_of_loop: ' + self.p1.getUsername() + ': ' + str(self.p1Color))
+                #print('out_of_loop: ' + self.p2.getUsername() + ': ' + str(self.p2Color))
                 if self.p1Color == 1:
                         self.p1Color = 'white'
                 else:
@@ -375,20 +398,8 @@ class Game(threading.Thread):
                 elif p == self.p2:
                         u = self.p1Username
                 sMsg = createSuccessResponseToPlayRequest(u, c, t)
-                print(u + ': sending sendPlayResponse')
+                #print(u + ': sending sendPlayResponse')
                 p.getUserSock().send(sMsg)
-
-        def setup(self):
-                """
-                TODO: purpose of the method
-                """
-                # Decide color and turn
-                # Send SREQRP to both players
-                self.poller = select.poll()
-                self.decideTurn()
-                self.decideColor()
-                self.sendPlayResponse(self.p1, self.p1Color, self.playerList[self.p1])
-                self.sendPlayResponse(self.p2, self.p2Color, self.playerList[self.p2])
 
         def setupPlayerSockets(self):
                 """
@@ -404,6 +415,7 @@ class Game(threading.Thread):
                       socket_object_6: ['uds', 'user_object_6']}
                 """
                 READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
+                self.poller = select.poll()
                 self.sockListLock.acquire()
                 e = []
                 e.append('internet')
@@ -427,34 +439,19 @@ class Game(threading.Thread):
                         self.poller.register(s, READ_ONLY)
                 self.sockListLock.release()
 
-        def addWatcher(self, uObject):
+                #for p in self.playerList:
+                        #e = []
+        def setup(self):
                 """
                 TODO: purpose of the method
-                user: User object of watcher
                 """
-                print('addWatcher')
-                print('==========')
-                #READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
-                #watcherSock = user.getUserSock()
-                #watcherUdsSock = user.getUserUdsSock()
-                #self.sockListLock.acquire()
-                #e = []
-                #e.append('internet')
-                #e.append(user)
-                #self.sockList[watcherSock] = e
-                #e = []
-                #e.append('internet')
-                #e.append(user)
-                #self.sockList[watcherUdsSock] = e
-                #self.fdToSocket[watcherSock.fileno()] = watcherSock
-                #self.fdToSocket[watcherUdsSock.fileno()] = watcherUdsSock
-                #self.poller.register(watcherSock, READ_ONLY)
-                #self.poller.register(watcherUdsSock, READ_ONLY)
-                ## TODO: may need to be added to watcherList
-                #self.sockListLock.release()
-                ## Send SREQRP watch(succes)
-                sMsg = createSuccessResponseToWatchRequest(self)
-                uObject.getUserSock().send(sMsg)
+                # Decide color and turn
+                # Send SREQRP to both players
+                self.decideTurn()
+                self.decideColor()
+                self.sendPlayResponse(self.p1, self.p1Color, self.playerList[self.p1])
+                self.sendPlayResponse(self.p2, self.p2Color, self.playerList[self.p2])
+                self.setupPlayerSockets()
 
         def cleanup(self):
                 """
@@ -462,122 +459,290 @@ class Game(threading.Thread):
                 """
                 print('Game::cleanup')
                 print('=============')
+                self.sockListLock.acquire()
                 for s in self.sockList:
-                        u = sockList[s][1]
-                        un = u.getUsername()
-                        print(un + ': calling Event')
-                        event = u.getEvent()
+                        uObject = self.sockList[s][1]
+                        u = uObject.getUsername()
+                        print(u + ': calling Event')
+                        event = uObject.getEvent()
                         event.set()
+                self.sockListLock.acquire()
+
+        def destroyGame(self, uObject):
+                """
+                TODO: purpose of the method
+                """
+                #print('destroyGame')
+                #print('===========')
+                #
+                # (1) send STEARD to all relevant parties (they are in sockList)
+                # (2) wake up user threads of all relevant parties
+                # (3) mark gameState as OVER so that a watcher who comes
+                #         (a) gameList.removeGameFromGameList(self)
+                #         (b) self.sockListLock.acquire()
+                #     between a and b can be detected correctly
+                #
+                # No need to clean up sockList
+                #
+                gameList.removeGameFromGameList(self)
+                self.sockListLock.acquire()
+                self.gameState = 'OVER'
+                sMsg = createTeardownMsg()
+                #cSock = uObject.getUserSock() # already closed socket of the client
+                for s in self.sockList:
+                        if self.sockList[s][0] is 'internet':
+                                #if s is not cSock:
+                                try:
+                                        s.send(sMsg)
+                                except socket.error as err:
+                                        #print(sMsg)
+                                        #print(err)
+                                        pass
+                                uObject = self.sockList[s][1]
+                                u = uObject.getUsername()
+                                print(u + ': waking Up')
+                                event = uObject.getEvent()
+                                event.set()
+                self.sockListLock.release()
+
+        def removeWatcherFromPollingList(self, uObject):
+                """
+                TODO: purpose of the method
+                """
+                #print('removeWatcherFromPollingList')
+                #print('============================')
+                self.sockListLock.acquire()
+                watcherSock = uObject.getUserSock()
+                watcherUdsSock = uObject.getUserUdsSock()
+                # socket might be removed polling list by
+                try:
+                        self.poller.unregister(watcherSock)
+                except KeyError:
+                        pass
+                self.poller.unregister(watcherUdsSock)
+                del self.fdToSocket[watcherSock.fileno()]
+                del self.fdToSocket[watcherUdsSock.fileno()]
+                del self.sockList[watcherSock]
+                del self.sockList[watcherUdsSock]
+                self.sockListLock.release()
+                event = uObject.getEvent()
+                event.set()
+                print(uObject.getUsername() + ' is removed from the game: ' + self.gameName)
+
+        def removeWatcher(self, s, uObject):
+                """
+                TODO: purpose of the method
+                """
+                #print('removeWatcher')
+                #print('=============')
+                sMsg = createSuccessResponseToLeaveRequest()
+                s.send(sMsg)
+                self.removeWatcherFromPollingList(uObject)
+
+        def addWatcherToPollingList(self, uObject):
+                """
+                TODO: purpose of the method
+                uObject: User object of watcher
+                """
+                #print('addWatcherToPollingList')
+                #print('=======================')
+                watcherSock = uObject.getUserSock()
+                watcherUdsSock = uObject.getUserUdsSock()
+                e = []
+                e.append('internet')
+                e.append(uObject)
+                self.sockList[watcherSock] = e
+                e = []
+                e.append('uds')
+                e.append(uObject)
+                self.sockList[watcherUdsSock] = e
+                self.fdToSocket[watcherSock.fileno()] = watcherSock
+                self.fdToSocket[watcherUdsSock.fileno()] = watcherUdsSock
+                READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
+                self.poller.register(watcherSock, READ_ONLY)
+                self.poller.register(watcherUdsSock, READ_ONLY)
+
+        def addWatcher(self, uObject):
+                """
+                TODO: purpose of the method
+                uObject: User object of watcher
+                """
+                #print('addWatcher')
+                #print('==========')
+                self.sockListLock.acquire()
+                if self.gameState is 'OVER':
+                        return False
+                sMsg = createSuccessResponseToWatchRequest(self)
+                uObject.getUserSock().send(sMsg)
+                self.addWatcherToPollingList(uObject)
+                ## TODO: may need to be added to watcherList
+                self.sockListLock.release()
+                print(uObject.getUsername() + ' is added to the game: ' + self.gameName)
+
+        def handleUdsSockets(self, s, uObject):
+                """
+                TODO: purpose of the method
+                """
+                rMsg = s.recv(rUdsMsgSize)
+                if rMsg == 'dead':
+                        u = uObject.getUsername()
+                        print(u + ' is dead')
+                        userType = uObject.getUserType()
+                        if userType == 'player':
+                                self.destroyGame(uObject)
+                                return True
+                        elif userType == 'watcher':
+                                self.removeWatcherFromPollingList(uObject)
+                else:
+                        print('unknown msg from Heartbeat')
+                return False
+
+        def throwDice(self):
+                """
+                TODO: purpose of the method
+                """
+                dice1 = random.choice(range(1, 7))
+                dice2 = random.choice(range(1, 7))
+                return (dice1, dice2)
+
+        def handleGameLogic(self, rMsg, s, uObject):
+                """
+                TODO: purpose of the method
+                """
+                if self.gameState == 'DICE' and self.activePlayer != uObject:
+                        # unrecognized message from the user
+                        # send SVRNOK
+                        uObject.sendSvrnokToClient(rMsg)
+                else:
+                         print('valid CTDICE')
+                         print(rMsg)
+                         # prepare STDICE msg
+                         dice = self.throwDice()
+                         sMsg = createServerThrowDiceMsg(dice[0], dice[1])
+                         s.send(sMsg)
+
+
+        def handleInternetSockets(self, s, uObject):
+                """
+                TODO: purpose of the method
+                """
+                rMsg = s.recv(rMsgSize)
+                #print('handleInternetSockets: ', rMsg)
+                header = getMsgHeader(rMsg)
+                userType = uObject.getUserType()
+                if header == 'CLPONG':
+                        #print(self.gameName + ':CLPONG for ' + uObject.getUsername())
+                        uObject.handlePongResponse(rMsg)
+                elif header == 'CREQST' and userType is 'watcher':
+                        paramDict = getMsgBody(rMsg)
+                        request = paramDict['type']
+                        if request is not 'leave':
+                                # unrecognized message from the user
+                                # send SVRNOK
+                                uObject.sendSvrnokToClient(rMsg)
+                                return
+                        self.removeWatcher(s, uObject)
+                elif header == '' and (userType is 'watcher' or userType is 'player'):
+                        # client socket is closed. Prepare to remove it
+                        self.poller.unregister(s)
+                elif s is self.p1Sock or s is self.p2Sock:
+                        self.handleGameLogic(rMsg, s, uObject)
+                else:
+                        # client socket is closed. Prepare to remove it
+                        # unrecognized message from the user
+                        # send SVRNOK
+                        uObject.sendSvrnokToClient(rMsg)
+
+        def main_loop(self):
+                """
+                Main loop of a Game object/thread
+                """
+                # poll for unix domain socket and client socket of players and watchers
+                #print('GAME:' + self.gameName + ' main_loop')
+                out = False
+                while True:
+                        events = self.poller.poll()
+                        for fd, flag in events:
+                                self.sockListLock.acquire()
+                                s = self.fdToSocket[fd]
+                                socketType = self.sockList[s][0]
+                                uObject = self.sockList[s][1]
+                                self.sockListLock.release()
+                                if flag & (select.POLLIN | select.POLLPRI):
+                                        #
+                                        # Unix Domain Sockets (uds) go here. Heartbeat object
+                                        # uses uds and simply its treatment is roughly the same
+                                        # for players and watchers except in the case that a
+                                        # player loses its connection, which translates to
+                                        # sending STEARD to all parties
+                                        #
+                                        if socketType == 'uds':
+                                                if self.handleUdsSockets(s, uObject) is True:
+                                                        out = True
+                                                        break
+                                        elif socketType == 'internet':
+                                                self.handleInternetSockets(s, uObject)
+                        #
+                        # Leaving because
+                        # (1) Game is over.
+                        #     Send SGMOVR to all relevant parties
+                        #
+                        # (2) A player is lost his/her connection.
+                        #     Send STEARD to all relevant parties
+                        #
+                        if out is True:
+                                break
 
         def run(self):
                 """
-                TODO: purpose of the method
+                Main thread of Game object
                 """
-                print('Game starts')
-                print('===========')
+                #print('Game starts')
+                #print('===========')
+                print('Game: ' + self.gameName + ' starts...')
                 self.setup()
-                #while True:
-                        #time.sleep(2)
-                        #print('Game thread...')
 
+                # game is ready for being added to gameList
+                gameList.addGameToGameList(self)
 
-                # poll for unix domain socket and client socket
-                #self.setupPlayerSockets()
-                #out = False
-                #while True:
-                        #events = self.poller.poll()
-                        #for fd, flag in events:
-                                #s = self.fdToSocket[fd]
-                                #if flag & (select.POLLIN | select.POLLPRI):
-                                        #self.sockListLock.acquire()
-                                        #socketType = sockList[s][0]
-                                        ##
-                                        ## Unix Domain Sockets (uds) goes here. Heartbeat
-                                        ## object uses uds and simply its treatment is roughly
-                                        ## the same for players and watchers except in the case
-                                        ## that a player loses its connection, which translates
-                                        ## to sending STEARD to all parties
-                                        ##
-                                        #if socketType == 'uds':
-                                                #msg = s.recv(rUdsMsgSize)
-                                                #if msg == 'dead':
-                                                        #u = uObject.getUsername()
-                                                        #userType = uObject.getUserType()
-                                                        #if userType == 'player':
-                                                                #print(STEARD)
-                                                                ## TODO: send STEARD to matchBroadcastList
-                                                                ## remove all the relevant parties from
-                                                                ## userList
-                                                        #print(u + ' is dead')
-                                                        #out = True
-                                                        #break
-                                                #else:
-                                                        #print('unknown msg from Heartbeat')
-                                        #elif s is self.p1Sock:
-                                                #self.handleUserMsg()
-                                        #elif s is self.p2Sock:
-                                                #self.handleUserMsg()
-                                        #self.sockListLock.release()
-                                #if self.state is 'PLAYING' or self.state is 'WATCHING':
-                                        ## control will be given to Game
-                                        #self.disablePolling()
-                                        #break
-                        ##
-                        ## Leaving because
-                        ## (1) self.state is 'CONNECTED'.
-                        ##     user did not respond to SVPING requests.
-                        ##     In this case, self.userSock is still polled
-                        ##
-                        ## (2) self.state is 'CONNECTED'
-                        ##     we noticed that client closed his/her socket
-                        ##     before SVPING/CLPONG sequence does its job.
-                        ##     In this case, self.userSock is already removed
-                        ##     from the polling list by handleUserMsg
-                        ##
-                        ## (3) self.state is 'WAITING'
-                        ##     user send a leave request while waiting an opponent
-                        ##     self.userSock is already in the polling list. Same
-                        ##     with (2)
-                        ##     Also tell the waitingRoom that user should be marked as 'deleted'
-                        ##
-                        #if out is True:
-                                #break
+                # poll sockets of each player and also watchers
+                self.main_loop()
 
-                self.cleanup()
+                #self.cleanup()
 
         def getp1Username(self):
                 """
-                TODO: purpose of the method
+                Return username of player 1
                 """
                 return self.p1Username
 
         def getp2Username(self):
                 """
-                TODO: purpose of the method
+                Return username of player 2
                 """
                 return self.p2Username
 
         def getp1Color(self):
                 """
-                TODO: purpose of the method
+                Returns color of player 1
                 """
                 return self.p1Color
 
         def getp2Color(self):
                 """
-                TODO: purpose of the method
+                Returns color of player 2
                 """
                 return self.p2Color
 
         def getScore(self):
                 """
-                TODO: purpose of the method
+                Return the score of the game
                 """
                 return self.score
 
         def getTurn(self):
                 """
-                TODO: purpose of the method
+                Returns the username of the player whose turn to play
                 """
                 return self.activePlayer.getUsername()
 
@@ -616,6 +781,19 @@ class User(threading.Thread):
                 self.fdToSocket = {}
                 self.gameInitializer = False
                 self.game = False
+                self.heartbeatSent = False
+
+        def setHeartbeatSent(self, val):
+                """
+                TODO: purpose of the method
+                """
+                self.heartbeatSent = val
+
+        def getHeartbeatSent(self):
+                """
+                TODO: purpose of the method
+                """
+                return self.heartbeatSent
 
         def connectToCommServer(self):
                 """
@@ -624,8 +802,8 @@ class User(threading.Thread):
                 self.userUdsSock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 self.userUdsSock.connect(self.serverAddr)
                 self.userUdsSock.send(self.username)
-                #msg = self.userUdsSock.recv(rUdsMsgSize)
-                #print('importante: ' + str(msg))
+                #rMsg = self.userUdsSock.recv(rUdsMsgSize)
+                #print('importante: ' + str(rMsg))
                 # Sync with Heartbeat before going further
                 self.event.wait()
                 # let's clear it again in case it is used in the future
@@ -673,7 +851,7 @@ class User(threading.Thread):
 
         def main_loop(self):
                 """
-                Main loop of a User object
+                Main loop of a User object/thread
                 """
                 # poll for unix domain socket and client socket
                 READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
@@ -691,7 +869,7 @@ class User(threading.Thread):
                                         if s is self.userUdsSock:
                                                 msg = self.userUdsSock.recv(rUdsMsgSize)
                                                 if msg == 'dead':
-                                                        waitingRoom.markAsDeleted(self.username)
+                                                        waitingRoom.markAsInvalid(self.username)
                                                         print(self.username + ' is dead')
                                                         out = True
                                                         break
@@ -700,7 +878,7 @@ class User(threading.Thread):
                                         elif s is self.userSock:
                                                 self.handleUserMsg()
                                                 if self.state is 'LEAVING':
-                                                        waitingRoom.markAsDeleted(self.username)
+                                                        waitingRoom.markAsInvalid(self.username)
                                                         out = True
                                                         break
                                 if self.state is 'PLAYING' or self.state is 'WATCHING':
@@ -762,7 +940,7 @@ class User(threading.Thread):
 
         def run(self):
                 """
-                TODO: purpose of the method
+                Main thrad of User object
                 """
                 # Handle login request coming from the client
                 if self.handleLoginRequest() is False:
@@ -786,13 +964,15 @@ class User(threading.Thread):
                         self.cleanup()
                         return
 
-                #print(self.username + ': waiting Game to be over')
+                # 'PLAYING' or 'WATCHING' state
+                print(self.username + ': waiting Game to be over')
                 # wait Game to be over
                 self.event.clear()
                 self.event.wait()
+                print(self.username + ': Game is over')
                 #self.state = 'UNKNOWN'
-                if self.gameInitializer is True:
-                        gameList.removeGameFromGameList(self.game)
+                #if self.gameInitializer is True:
+                        #gameList.removeGameFromGameList(self.game)
                 self.closeSockets()
                 self.removeUserFromUserList()
 
@@ -859,6 +1039,12 @@ class User(threading.Thread):
                 #print('handlePlayRequest')
                 #print('=================')
                 self.userType = 'player'
+                #
+                # A player whose name is the same with this player, might be put into
+                # waiting room before. If we don't make that entry valid again, WaitingRoom
+                # will think that it is invalid
+                #
+                waitingRoom.markAsValid(self.username)
                 opponent = waitingRoom.getOpponent(self.username)
                 if opponent is False:
                         # No opponent to play
@@ -894,15 +1080,15 @@ class User(threading.Thread):
                 # create Game object and add it to gameList
                 g = Game(self, opponent)
                 self.game = g
-                gameList.addGameToGameList(g)
+                #gameList.addGameToGameList(g)
                 g.start()
 
         def handleWatchRequest(self):
                 """
                 TODO: purpose of the method
                 """
-                print('handleWatchRequest')
-                print('==================')
+                #print('handleWatchRequest')
+                #print('==================')
                 #self.sendSvrnokToClient('watch')
                 # find a match to watch
                 game = gameList.findGame()
@@ -924,7 +1110,7 @@ class User(threading.Thread):
                 """
                 paramDict = getMsgBody(rMsg)
                 request = paramDict['type']
-                print('client request is ' + request)
+                print(self.username + ' request is ' + request)
                 if request == 'play' and self.state == 'CONNECTED':
                         self.handlePlayRequest()
                 elif request == 'watch' and self.state == 'CONNECTED':
@@ -945,7 +1131,7 @@ class User(threading.Thread):
                 #print('handleUserMsg: ', rMsg)
                 header = getMsgHeader(rMsg)
                 if header == 'CLPONG':
-                        self.handlePongResponse()
+                        self.handlePongResponse(rMsg)
                 elif header == 'CREQST':
                         self.handleClientRequest(rMsg)
                 elif header == '':
@@ -957,13 +1143,20 @@ class User(threading.Thread):
                         # send SVRNOK
                         self.sendSvrnokToClient(rMsg)
 
-        def handlePongResponse(self):
+        def handlePongResponse(self, rMsg):
                 """
                 TODO: purpose of the method
                 """
                 global clientPongWinOpen
+                paramDict = {}
+                #print(rMsg)
+                paramDict = getMsgBody(rMsg)
+                #print(paramDict)
                 if clientPongWinOpen is True:
                         self.pongMissingCount = -1
+                        #print(self.username + ': handlePongResponse: ' + paramDict["msgId"])
+                #else:
+                        #print('GayyaKuyusu: ' + self.username + ': handlePongResponse: ' + paramDict["msgId"])
 
         def update_pongMissingCount(self):
                 """
@@ -1007,6 +1200,12 @@ class User(threading.Thread):
                 TODO: purpose of the method
                 """
                 self.userType = userType
+
+        def getState(self, state):
+                """
+                TODO: purpose of the method
+                """
+                return self.state
 
         def setState(self, state):
                 """

@@ -53,23 +53,60 @@ def getMsgBody(message):
         #print(paramDict)
         return paramDict
 
+def createServerThrowDiceMsg(dice1, dice2):
+        """
+        Prepares a svrnok (STDICE) msg to be sent to the client
+        """
+        paramDict = {}
+        paramDict['dice1'] = str(dice1)
+        paramDict['dice2'] = str(dice2)
+        return createMsgWithFilledBody("STDICE", paramDict)
+
+def createClientThrowDiceMsg():
+        """
+        Prepares a svrnok (CTDICE) msg to be sent to the client
+        """
+        return createMsgWithEmptyBody("CTDICE")
+
+def createTeardownMsg():
+        """
+        Prepares a svrnok (STEARD) msg to be sent to the client
+        """
+        return createMsgWithEmptyBody("STEARD")
+
 def createSvrnokMsg():
         """
         Prepares a svrnok (SVRNOK) msg to be sent to the client
         """
         return createMsgWithEmptyBody("SVRNOK")
 
-def createPingMsg():
+def createPingMsg(msgId):
         """
         Prepares a ping (SVPING) msg to be sent to the client
         """
-        return createMsgWithEmptyBody("SVPING")
+        paramDict = {}
+        paramDict['msgId'] = str(msgId)
+        return createMsgWithFilledBody("SVPING", paramDict)
 
-def createPongMsg():
+def createPongMsg(msgId):
         """
         Prepares a pong (CLPONG) msg to be sent to the server
         """
-        return createMsgWithEmptyBody("CLPONG")
+        paramDict = {}
+        paramDict['msgId'] = str(msgId)
+        return createMsgWithFilledBody("CLPONG", paramDict)
+
+#def createPingMsg():
+        #"""
+        #Prepares a ping (SVPING) msg to be sent to the client
+        #"""
+        #return createMsgWithEmptyBody("SVPING")
+
+#def createPongMsg():
+        #"""
+        #Prepares a pong (CLPONG) msg to be sent to the server
+        #"""
+        #return createMsgWithEmptyBody("CLPONG")
 
 def createSuccessResponseToLoginRequest():
         """
