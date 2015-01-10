@@ -45,9 +45,16 @@ def getMsgBody(message):
                 #print('msg[i]: ', msg[i])
                 e = msg[i][1:len(msg[i])-1].split(': ')
                 #print('e: ', e)
-                #print(entry[0], entry[1])
+                #print(e[0], e[1])
                 key = str(e[0][1:len(e[0])-1])
-                value = str(e[1][1:len(e[1])-1])
+                try:
+                        value = str(e[1][1:len(e[1])-1])
+                except IndexError:
+                        print('Aradigimiz BUG')
+                        print(message)
+                        print(msg)
+                        print('e: ', e)
+                        print('key: ' + key)
                 paramDict[key] = value
 
         #print(paramDict)

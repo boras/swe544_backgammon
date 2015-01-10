@@ -187,6 +187,9 @@ class WaitingRoom(object):
                 # Queue is thread safe
                 #print('WaitingRoom: ' + username)
                 self.waitingRoom.put(username)
+                self.waitingRoomLock.acquire()
+                self.waitersList[username] = 'valid'
+                self.waitingRoomLock.release()
 
         def markAsInvalid(self, username):
                 """
@@ -194,7 +197,8 @@ class WaitingRoom(object):
                 """
                 # Dict is not thread safe
                 self.waitingRoomLock.acquire()
-                self.waitersList[username] = 'invalid'
+                #self.waitersList[username] = 'invalid'
+                del self.waitersList[username]
                 self.waitingRoomLock.release()
 
         def markAsValid(self, username):
@@ -223,13 +227,13 @@ class WaitingRoom(object):
                         # check if it is marked as 'invalid'
                         flag = self.waitersList.get(opponent, None)
                         # there is a valid opponent
-                        if flag != 'invalid':
+                        if flag == 'valid':
                                 self.waitingRoomLock.release()
                                 return opponent
-                        else:
-                                # there is an opponent but marked as 'deleted'
+                        #else:
+                                # there is an opponent but 'deleted'
                                 # remove it from waitersList
-                                del self.waitersList[opponent]
+                                #del self.waitersList[opponent]
                         self.waitingRoomLock.release()
 
 class GameList(object):
@@ -605,6 +609,15 @@ class Game(threading.Thread):
                 dice2 = random.choice(range(1, 7))
                 return (dice1, dice2)
 
+        def sendBroadcastMsg(self, sMsg):
+                """
+                TODO: purpose of the method
+                """
+                self.sockListLock.acquire()
+                for s in self.sockList:
+                        s.send(sMsg)
+                self.sockListLock.release()
+
         def handleGameLogic(self, rMsg, s, uObject):
                 """
                 TODO: purpose of the method
@@ -619,7 +632,8 @@ class Game(threading.Thread):
                          # prepare STDICE msg
                          dice = self.throwDice()
                          sMsg = createServerThrowDiceMsg(dice[0], dice[1])
-                         s.send(sMsg)
+                         self.sendBroadcastMsg(sMsg)
+                         #s.send(sMsg)
 
 
         def handleInternetSockets(self, s, uObject):
@@ -636,7 +650,7 @@ class Game(threading.Thread):
                 elif header == 'CREQST' and userType is 'watcher':
                         paramDict = getMsgBody(rMsg)
                         request = paramDict['type']
-                        if request is not 'leave':
+                        if request != 'leave':
                                 # unrecognized message from the user
                                 # send SVRNOK
                                 uObject.sendSvrnokToClient(rMsg)
@@ -960,7 +974,12 @@ class User(threading.Thread):
                 if self.state is not 'PLAYING' and self.state is not 'WATCHING':
                         if self.state is 'LEAVING':
                                 sMsg = createSuccessResponseToLeaveRequest()
-                                self.userSock(sMsg)
+                                try:
+                                        self.userSock.send(sMsg)
+                                except socket.error as err:
+                                        #print(sMsg)
+                                        #print(err)
+                                        pass
                         self.cleanup()
                         return
 
@@ -1044,17 +1063,19 @@ class User(threading.Thread):
                 # waiting room before. If we don't make that entry valid again, WaitingRoom
                 # will think that it is invalid
                 #
-                waitingRoom.markAsValid(self.username)
+                #waitingRoom.markAsValid(self.username)
                 opponent = waitingRoom.getOpponent(self.username)
                 if opponent is False:
                         # No opponent to play
                         # put user to waitingRoom and set state to WAITING
+                        #print('no opponent to play')
                         waitingRoom.addToWaitingRoom(self.username)
                         self.state = 'WAITING'
                         # send SREQRP play(fail) message to the user
                         sMsg = createFailResponseToPlayRequest()
                         self.userSock.send(sMsg)
                         return
+                #print('opponent to play: ' + opponent)
                 # success
                 #print('there is an opponent to play')
                 userListLock.acquire()

@@ -5,31 +5,6 @@ import select
 
 rMsgSize = 1024
 
-def connectToServer(serverIP, username):
-        s = socket.socket()
-        #host = socket.gethostname()
-        host = serverIP
-        port = 10001
-        try:
-                s.connect((host, port))
-        except socket.error as err:
-                print(err)
-                s.close()
-                return
-        print s.recv(rMsgSize)
-        paramList = []
-        paramList.append(username)
-        msg = createMsg("CLOGIN", paramList)
-        print(msg)
-        #s.send(msg)
-        paramList = []
-        paramList.append("play")
-        msg = createMsg("CREQST", paramList)
-        print(msg)
-        msg = createMsg("CTDICE", paramList)
-        print(msg)
-        s.close()
-
 class Client(object):
         """
         Representation of a simple backgammon client
@@ -77,23 +52,11 @@ class Client(object):
                 self.username = username
                 self.s = -1
                 self.state = 'IDLE'
-                self.allowedMessages = {}
-                self.allowedUserCmds = {}
-                self.initUserCmds()
                 self.poller = -1
                 self.fdToObject = {}
                 self.userType = 'unknown'
-
-        def initUserCmds(self):
-                """
-                TODO: purpose of the method
-                """
-                self.allowedUserCmds['play']= 'off'
-                self.allowedUserCmds['watch']= 'off'
-                self.allowedUserCmds['leave']= 'off'
-                self.allowedUserCmds['dice']= 'off'
-                self.allowedUserCmds['move']= 'off'
-                self.allowedUserCmds['reject']= 'off'
+                self.p = -1 # Player object
+                self.w = -1 # Watcher object
 
         def sendLoginRequest(self):
                 """
@@ -103,27 +66,45 @@ class Client(object):
                 #print(msg)
                 self.s.send(msg)
 
+        #def handleLoginResponse(self):
+                #"""
+                #Handles login response sent by the server
+                #"""
+                #message = self.s.recv(rMsgSize)
+                #print(message)
+
+                #msg = message
+                #msgList = msg.split('\n')
+                #if msgList[0] != 'SLRSPS':
+                        #return False
+                #msgList = msgList[3].split(':')
+                #key = msgList[0].split('"')[1]
+                #if key != 'result':
+                        #return False
+                #val = msgList[1].split('"')[1]
+                ##print(val)
+
+                #if val == "fail":
+                        #return False
+                #return True
+
         def handleLoginResponse(self):
                 """
                 Handles login response sent by the server
                 """
-                message = self.s.recv(rMsgSize)
-                print(message)
+                rMsg = self.s.recv(rMsgSize)
+                #print(rMsg)
 
-                msg = message
-                msgList = msg.split('\n')
-                if msgList[0] != 'SLRSPS':
+                header = getMsgHeader(rMsg)
+                if header != 'SLRSPS':
                         return False
-                msgList = msgList[3].split(':')
-                key = msgList[0].split('"')[1]
-                if key != 'result':
+                paramDict = getMsgBody(rMsg)
+                result = paramDict['result']
+                if result == 'fail':
                         return False
-                val = msgList[1].split('"')[1]
-                #print(val)
-
-                if val == "fail":
-                        return False
-                return True
+                elif result == 'success':
+                        return True
+                return False
 
         def sessionSetup(self):
                 """
@@ -148,22 +129,21 @@ class Client(object):
                         self.state = "IDLE"
                         return False
 
-                self.allowedUserCmds['play'] = 'on'
-                self.allowedUserCmds['watch'] = 'on'
                 self.state = "CONNECTED"
                 return True
 
         def run(self):
                 """
-                TODO: purpose of the method
+                Main loop of a client
                 """
                 print('serverIP is ' + self.serverIP)
                 print('username is ' + self.username)
                 # Connection to the server failed
                 if self.sessionSetup() is False:
-                        return;
+                        print('connection is refused by the server')
+                        return
 
-                # TODO: print message here
+                # print welcome message
                 print("Hi " + self.username)
                 self.connectedScreen()
 
@@ -224,57 +204,78 @@ class Client(object):
                 sys.stdout.write("> ")
                 sys.stdout.flush()
 
-        def handleUserInputConnectedState(self, userInput):
+        def failedWatchScreen(self):
                 """
                 TODO: purpose of the method
                 """
-                sMsg = False
-                try:
-                        if 1 == int(userInput):
-                                self.disableInput()
-                                sMsg = createPlayRequest()
-                                self.state = 'PLAY_REQ'
-                        elif 2 == int(userInput):
-                                self.disableInput()
-                                sMsg = createWatchRequest()
-                                self.state = 'WATCH_REQ'
-                        else:
-                                self.connectedScreen()
-                except ValueError:
-                        self.connectedScreen()
-                if sMsg is not False:
-                        self.s.send(sMsg)
+                print("No game to watch")
+                self.connectedScreen()
+
+        def failedLeavingScreen(self):
+                """
+                TODO: purpose of the method
+                """
+                print("(3) Leave")
+                sys.stdout.write("> ")
+                sys.stdout.flush()
 
         def handleUserInput(self, userInput):
                 """
-                Handles user input
-
-                Will be calling
-                        handleConnectedState if state is CONNECTED
-                        handlePlayingState if state is PLAYING
-                        handleWatchingState if state is WATCHING
-                        handleLeavingState if state is LEAVING
+                TODO: purpose of the method
                 """
+                #print('handleUserInput')
+                #print('===============')
+                #print('self.state is ' + self.state)
+                sMsg = False
                 if self.state is 'CONNECTED':
-                        self.handleUserInputConnectedState(userInput)
+                        try:
+                                if 1 == int(userInput):
+                                        self.disableInput()
+                                        sMsg = createPlayRequest()
+                                        self.state = 'PLAY_REQ'
+                                elif 2 == int(userInput):
+                                        self.disableInput()
+                                        sMsg = createWatchRequest()
+                                        self.state = 'WATCH_REQ'
+                                else:
+                                        self.connectedScreen()
+                        except ValueError:
+                                self.connectedScreen()
+                        if sMsg is not False:
+                                self.s.send(sMsg)
+                elif self.state is 'WAITING':
+                        try:
+                                if 3 == int(userInput):
+                                        self.disableInput()
+                                        sMsg = createLeaveRequest()
+                                else:
+                                        self.failedLeavingScreen()
+                        except ValueError:
+                                self.failedLeavingScreen()
+                        if sMsg is not False:
+                                self.s.send(sMsg)
+                                self.state = 'LEAVING'
+                elif self.state is 'PLAYING':
+                        self.p.handleUserInput(userInput)
+                elif self.state is 'WATCHING':
+                        self.w.handleUserInput(userInput)
+                else:
+                        print('user input in a state(' + self.state + ') which is not valid')
 
         def handleServerInput(self, rMsg):
                 """
-                Handles the messages sent by the server
-
-                Will be calling
-                        handleRequestResponse (SREQRP) if state is CONNECTED
-                        handleServerThrownDice (STDICE) if state is PLAYING or state is WATCHING
-                        handleServerRejectMove (SRJCTM) if state is PLAYING or state is WATCHING
-                        handleServerNOK if state is not IDLE
-                        handleHeartbeat (SVPONG) if state is not IDLE
-                        handleMove (SMOVEC) if state is PLAYING or state is WATCHING
+                TODO: purpose of the method
                 """
+                #print('handleServerInput')
+                #print('=================')
+                #print('self.state is ' + self.state)
                 #print(rMsg)
                 header = getMsgHeader(rMsg)
                 #print('header: ' + header)
                 sMsg = False
-                if rMsg == '':
+                if rMsg == '': # server closed the socket
+                        return False
+                elif header == 'SREQRP' and self.state is 'LEAVING':
                         return False
                 elif header == 'SVPING':
                         #print('creating pong rMsg')
@@ -285,9 +286,22 @@ class Client(object):
                         if sMsg is not False:
                                 self.s.send(sMsg)
                                 #print(' - CLPONG')
-                elif header == 'SREQRP':
+                elif header == 'SREQRP' and (self.state is 'PLAY_REQ' or
+                                             self.state is 'WATCH_REQ' or
+                                             self.state is 'WAITING'):
                         self.handleRequestResponse(rMsg)
-                elif header == 'SVRNOK':
+                elif self.state is 'PLAYING':
+                        self.p.handleServerInput(rMsg)
+                elif self.state is 'WATCHING':
+                        self.w.handleServerInput(rMsg)
+                elif header == 'SVRNOK' and (self.state is 'PLAY_REQ' or
+                                             self.state is 'WATCH_REQ' or
+                                             self.state is 'WAITING'):
+                        print(rMsg)
+                        # TODO: check if they need to be removed or changed
+                        self.state = 'CONNECTED'
+                        self.enableInput()
+                elif header == 'SVRNOK': #TODO: in what situations?
                         print(rMsg)
                         # TODO: check if they need to be removed or changed
                         self.state = 'CONNECTED'
@@ -301,163 +315,40 @@ class Client(object):
                 """
                 TODO: purpose of the method
                 """
-                print('handleRequestResponse')
-                print(rMsg)
+                #print('handleRequestResponse')
+                #print('=====================')
+                #print(rMsg)
                 paramDict = getMsgBody(rMsg)
                 request = paramDict['type']
+                result = paramDict['result']
                 if request == 'play' and self.state == 'PLAY_REQ':
-                        result = paramDict['result']
                         if result == 'fail':
-                                print('result is fail')
-                                self.state = 'WAITING'
+                                #print('result is fail')
                                 self.enableInput()
+                                self.state = 'WAITING'
                                 self.failedPlayScreen()
                         elif result == 'success':
                                 self.state = 'PLAYING'
-                                self.p = Player(self.serverIP, self.username, self.s, rMsg)
-                elif self.state is 'WAITING':
-                                self.state = 'PLAYING'
-                                self.p = Player(self.serverIP, self.username, self.s, rMsg)
+                                self.p = Player(self.serverIP, self.username, self, rMsg)
                 elif request == 'watch' and self.state == 'WATCH_REQ':
-                                print('NE MUTLU TURKUM DIYENE')
+                        if result == 'fail':
+                                #print('result is fail')
+                                self.enableInput()
+                                self.state = 'CONNECTED'
+                                self.failedWatchScreen()
+                        elif result == 'success':
+                                self.state = 'WATCHING'
+                                self.w = Watcher(self.serverIP, self.username, self, rMsg)
+                elif self.state is 'WAITING':
+                                self.disableInput()
+                                self.state = 'PLAYING'
+                                self.p = Player(self.serverIP, self.username, self, rMsg)
 
-        def handleConnectedState(self):
-                """
-                TODO: purpose of the method
-
-                Will be calling
-                        sendPlayRequest (CREQST) if state is CONNECTED and allowedUserCmds['play'] is 'on'
-                        sendWatchRequest (CREQST) if state is CONNECTED and allowedUserCmds['watch'] is 'on'
-                """
-                raise NotImplementedError
-
-        def handlePlayingState(self):
-                """
-                TODO: purpose of the method
-
-                Will be calling
-                        sendThrowDice (CTDICE) if state is PLAYING and turn == 1 and allowedUserCmds['dice'] is 'on'
-                        sendMove (CMOVEC) if state is PLAYING and turn == 1 and allowedUserCmds['move'] is 'on'
-                """
-                raise NotImplementedError
-
-        def handleWaitingState(self):
-                """
-                TODO: purpose of the method
-                Will be calling
-                        sendLeaveRequest if state is WAITING
-                """
-                raise NotImplementedError
-
-        def handleWatchingState(self):
-                """
-                TODO: purpose of the method
-                Will be calling
-                        sendLeaveRequest if state is WATCHING (CREQST)
-                """
-                raise NotImplementedError
-
-        def handlePlayResponse(self):
-                """
-                TODO: purpose of the method
-                state is either 'PLAYING' or 'WAITING'
-                state is PLAYING.
-                        learn whose turn is
-                        if turn is ours:
-                                allowedUserCmds['dice'] = 'on'
-                                allowedUserCmds['others'] = 'off'
-                        else:
-                                allowedUserCmds['all'] = 'off'
-
-                state is WAITING.
-                        allowedUserCmds['leave'] = 'on'
-                        allowedUserCmds['others'] = 'off'
-                """
-                raise NotImplementedError
-
-        def handleWatchResponse(self):
-                """
-                TODO: purpose of the method
-                state is either 'WATCHING' or 'CONNECTED'
-                state is WATCHING.
-                        allowedUserCmds['leave'] = 'on'
-                        allowedUserCmds['others'] = 'off'
-                state is CONNECTED.
-                        allowedUserCmds['play'] = 'on'
-                        allowedUserCmds['watch'] = 'on'
-                        allowedUserCmds['others'] = 'off'
-                """
-                raise NotImplementedError
-
-        def handleLeaveResponse(self):
-                """
-                TODO: purpose of the method
-                state is LEAVING
-                        allowedUserCmds['all'] = 'off'
-                """
-                raise NotImplementedError
-
-        def handleServerThrownDice(self):
+        def getSocket(self):
                 """
                 TODO: purpose of the method
                 """
-                raise NotImplementedError
-
-        def handleServerRejectMove(self):
-                """
-                TODO: purpose of the method
-                """
-                raise NotImplementedError
-
-        def handleServerNOK(self):
-                """
-                TODO: purpose of the method
-                """
-                raise NotImplementedError
-
-        def handleHeartbeat(self):
-                """
-                TODO: purpose of the method
-                call sendHeartbeatMsg -> CLPONG
-                """
-                raise NotImplementedError
-
-        def handleMove(self):
-                """
-                TODO: purpose of the method
-                call sendThrowDice -> CTDICE or sendReject -> CRJCTM
-                """
-                raise NotImplementedError
-
-        def sendPlayRequest(self):
-                """
-                TODO: purpose of the method
-                """
-                raise NotImplementedError
-
-        def sendWatchRequest(self):
-                """
-                TODO: purpose of the method
-                """
-                raise NotImplementedError
-
-        def sendLeaveRequest(self):
-                """
-                TODO: purpose of the method
-                """
-                raise NotImplementedError
-
-        def sendThrowDice(self):
-                """
-                TODO: purpose of the method
-                """
-                raise NotImplementedError
-
-        def sendMove(self):
-                """
-                TODO: purpose of the method
-                """
-                raise NotImplementedError
+                return self.s
 
         def __str__(self):
                 """
@@ -467,33 +358,171 @@ class Client(object):
 
 class Player(Client):
         """
+        TODO: purpose of the class
         """
-        def __init__(self, serverIP, username, s, rMsg):
+        def __init__(self, serverIP, username, client, rMsg):
                 """
                 TODO: purpose of the method
                 """
                 Client.__init__(self, serverIP, username)
                 print('Player::__init__')
-                #print(rMsg)
-                self.s = s
+                self.client = client
+                self.s = self.client.getSocket()
+                self.playingState = 'DICE'
+                self.idsToCmd = {}
+                self.cmdFlags = {}
+                # TODO: create Board Object
+
+                # parse message
+                print(rMsg)
+                header = getMsgHeader(rMsg)
+                if header != 'SREQRP':
+                        print('server request response is not SREQRP but ' + header)
+                        # TODO: handle it
                 paramDict = getMsgBody(rMsg)
                 self.color = paramDict["color"]
                 self.turn = paramDict["turn"]
+                self.opponent = paramDict['opponent']
+
+                # init playing cmdline
+                self.initCmds()
+
+                # show playing screen
+                self.playingScreen()
+
+        def initIdsToCmd(self):
+                """
+                TODO: purpose of the method
+                """
+                self.idsToCmd[4] = 'dice'
+                self.idsToCmd[5] = 'move'
+                self.idsToCmd[6] = 'reject'
+
+        def initCmds(self):
+                """
+                TODO: purpose of the method
+                """
+                self.initIdsToCmd()
                 if int(self.turn) == 1:
-                        sMsg = createClientThrowDiceMsg()
-                        self.s.send(sMsg)
+                        self.cmdFlags['dice'] = '(open)'
+                else:
+                        self.cmdFlags['dice'] = '(closed)'
+                self.cmdFlags['move'] = '(closed)'
+                self.cmdFlags['reject'] = '(closed)'
+
+        def playingInputScreen(self):
+                """
+                TODO: purpose of the method
+                """
+                print("(4) Dice " + self.cmdFlags['dice'])
+                print("(5) Move " + self.cmdFlags['move'])
+                print("(6) Reject " + self.cmdFlags['reject'])
+                sys.stdout.write("> ")
+                sys.stdout.flush()
+
+        def playingScreen(self):
+                """
+                TODO: purpose of the method
+                """
+                # match info
+                print('You are playing with ' + self.opponent)
+                if int(self.turn) == 1:
+                        print('You turn to play')
+                else:
+                        print('Not your turn to play')
+                # TODO: board info. create Board object
+                print('TODO: *****board state*****')
+                self.playingInputScreen()
+                self.client.enableInput()
 
         def handleServerInput(self, rMsg):
                 """
                 TODO: purpose of the method
                 """
                 print('Player::handleServerInput')
+                print(rMsg)
+                #header = getMsgHeader(rMsg)
+                #if header is 'STDICE' and self.state is 'DICE':
 
         def handleUserInput(self, userInput):
                 """
                 TODO: purpose of the method
                 """
                 print('Player::handleUserInput')
+                sMsg = False
+                if self.playingState is 'DICE':
+                        try:
+                                cmd = self.idsToCmd.get(int(userInput), None)
+                                if cmd is not None and self.cmdFlags[cmd] == '(open)':
+                                        self.client.disableInput()
+                                        sMsg = createClientThrowDiceMsg()
+                                        self.playingState = 'WAITING_DICE'
+                                        self.cmdFlags[cmd] = '(closed)'
+                                else:
+                                        self.playingInputScreen()
+                        except ValueError:
+                                self.playingInputScreen()
+                        if sMsg is not False:
+                                self.s.send(sMsg)
+
+class Watcher(Client):
+        """
+        TODO: purpose of the class
+        """
+        def __init__(self, serverIP, username, client, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                Client.__init__(self, serverIP, username)
+                print('Watcher::__init__')
+                self.client = client
+                self.s = self.client.getSocket()
+                # TODO: create Board Object
+
+                # parse message
+                print(rMsg)
+                # TODO: parse rMsg and save match info
+
+                # show watching screen
+                self.successfulWatchScreen()
+
+        def successfulWatchScreen(self):
+                """
+                TODO: purpose of the method
+                """
+                print('TODO: *****match info*****')
+                print('TODO: *****board state*****')
+                print("(3) Leave")
+                sys.stdout.write("> ")
+                sys.stdout.flush()
+                self.client.enableInput()
+
+        def handleServerInput(self, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                print('Watcher::handleServerInput')
+                print(rMsg)
+                # TODO: parse and print messages sent by the server
+
+        def handleUserInput(self, userInput):
+                """
+                TODO: purpose of the method
+                """
+                #print('Watcher::handleUserInput')
+                sMsg = False
+                c = self.client
+                try:
+                        if 3 == int(userInput):
+                                c.disableInput()
+                                sMsg = createLeaveRequest()
+                        else:
+                                self.failedLeavingScreen()
+                except ValueError:
+                        self.failedLeavingScreen()
+                if sMsg is not False:
+                        self.s.send(sMsg)
+                        self.state = 'LEAVING'
 
 def usage():
         """
