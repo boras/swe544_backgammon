@@ -2,6 +2,7 @@ import sys, getopt
 import socket
 from backgammonlib import *
 import select
+import string
 
 #
 # Global Variables
@@ -676,6 +677,26 @@ def checkUsername(username):
         A username may consist of English letters (case sensitive), numerals and underscore.
         However, it can't start with anything other than English letters
         """
+        # username start with an english letter
+        found = False
+        for letter in string.ascii_letters:
+                if username[0] == letter:
+                        found = True
+                        break
+        if found is False:
+                return False
+        # found is True
+        # username should not include punctuation characters except underscore
+        for p in string.punctuation:
+                for u in range(len(username)):
+                        if username[u] == p and p != '_':
+                                return False
+        # found is True
+        # username should not include whitespace characters
+        for w in string.whitespace:
+                for u in range(len(username)):
+                        if username[u] == w:
+                                return False
         return True
 
 if __name__ == "__main__":

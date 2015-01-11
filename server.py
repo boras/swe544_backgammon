@@ -241,7 +241,9 @@ class WaitingRoom(object):
                 # Dict is not thread safe
                 self.waitingRoomLock.acquire()
                 #self.waitersList[username] = 'invalid'
-                del self.waitersList[username]
+                u = self.waitersList.get(username, None)
+                if u is not None:
+                        del self.waitersList[username]
                 self.waitingRoomLock.release()
 
         def markAsValid(self, username):
