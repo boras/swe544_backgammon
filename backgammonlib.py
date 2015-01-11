@@ -1,7 +1,7 @@
 
 def isEmpty(anyStructure):
         """
-        TODO: purpose of the method
+        Checks if any structure (dict, list, tuple, ... etc) is empty or not
         """
         if anyStructure:
                 return False
@@ -11,6 +11,8 @@ def isEmpty(anyStructure):
 def createMsgWithEmptyBody(msgType):
         """
         Creates a msg whose body is empty
+
+        msgType: msg header
         """
         msg = str(msgType)
         msg = msg + "\n\r\n{\n}"
@@ -19,9 +21,10 @@ def createMsgWithEmptyBody(msgType):
 
 def createMsgWithFilledBody(msgType, paramDict):
         """
-        Creates a msg whose body is not empty.
+        Creates a msg whose body is filled (not empty)
+
+        msgType: msg header
         paramDict depends on the msgType, filled by the specific msg handler
-        TODO: it should handle more than one key=value pair
         """
         #print('createMsgWithFilledBody')
         msg = str(msgType)
@@ -35,15 +38,14 @@ def createMsgWithFilledBody(msgType, paramDict):
 
 def getMsgHeader(msg):
         """
-        TODO: purpose of the method
+        Gets and returns message header
         """
         #print('getMsgHeader: ', msg.split('\n'))
         return msg.split('\n')[0]
 
 def getMsgBody(message):
         """
-        TODO: purpose of the method
-        Return as a list i.e. ['key', 'value', 'key', 'value', ...]
+        Gets and returns message body as a dict {key1:val1, key2:val2, ...}
         """
         #print('getMsgBody')
         msg = message.split('\n')
@@ -70,8 +72,10 @@ def getMsgBody(message):
 
 def createServerRejectMsg(boardstate):
         """
-        Prepares a move msg to be sent to the server
-        move: move in backgammon notation
+        Creates a server reject msg
+
+        boardstate: should be the latest valid boardstate, which is hold
+        by the server authoritatively
         """
         paramDict = {}
         paramDict["boardstate"] = boardstate
@@ -79,15 +83,15 @@ def createServerRejectMsg(boardstate):
 
 def createClientRejectMsg():
         """
-        Prepares a move msg to be sent to the server
-        move: move in backgammon notation
+        Creates a client reject msg
         """
         return createMsgWithEmptyBody("CRJCTM")
 
 def createServerMoveMsg(move):
         """
-        Prepares a move msg to be sent to the server
-        move: move in backgammon notation
+        Creates a server move msg
+
+        move: in backgammon notation
         """
         paramDict = {}
         paramDict["move"] = move
@@ -95,8 +99,9 @@ def createServerMoveMsg(move):
 
 def createClientMoveMsg(move):
         """
-        Prepares a move msg to be sent to the server
-        move: move in backgammon notation
+        Creates a client move msg
+
+        move: in backgammon notation
         """
         paramDict = {}
         paramDict["move"] = move
@@ -104,7 +109,10 @@ def createClientMoveMsg(move):
 
 def createServerThrowDiceMsg(dice1, dice2):
         """
-        Prepares a svrnok (STDICE) msg to be sent to the client
+        Creates a server dice msg
+
+        dice1: first dice value between [1,6]
+        dice2: second dice value between [1,6]
         """
         paramDict = {}
         paramDict['dice1'] = str(dice1)
@@ -113,25 +121,27 @@ def createServerThrowDiceMsg(dice1, dice2):
 
 def createClientThrowDiceMsg():
         """
-        Prepares a svrnok (CTDICE) msg to be sent to the client
+        Creates a client dice msg
         """
         return createMsgWithEmptyBody("CTDICE")
 
 def createTeardownMsg():
         """
-        Prepares a svrnok (STEARD) msg to be sent to the client
+        Creates a server teardown msg
         """
         return createMsgWithEmptyBody("STEARD")
 
 def createSvrnokMsg():
         """
-        Prepares a svrnok (SVRNOK) msg to be sent to the client
+        Creates a server svrnok msg
         """
         return createMsgWithEmptyBody("SVRNOK")
 
 def createPingMsgDebug(msgId):
         """
-        Prepares a ping (SVPING) msg with an id to be sent to the client
+        Creates a ping msg with an id to be sent to the client
+
+        msgId: a number between [1-99999]
         """
         paramDict = {}
         paramDict['msgId'] = str(msgId)
@@ -139,7 +149,9 @@ def createPingMsgDebug(msgId):
 
 def createPongMsgDebug(msgId):
         """
-        Prepares a pong (CLPONG) msg with an id of SVPING to be sent to the server
+        Creates a pong msg with an id of SVPING to be sent to the server
+
+        msgId: a number between [1-99999]
         """
         paramDict = {}
         paramDict['msgId'] = str(msgId)
@@ -147,19 +159,19 @@ def createPongMsgDebug(msgId):
 
 def createPingMsg():
         """
-        Prepares a ping (SVPING) msg to be sent to the client
+        Creates a ping msg to be sent to the client
         """
         return createMsgWithEmptyBody("SVPING")
 
 def createPongMsg():
         """
-        Prepares a pong (CLPONG) msg to be sent to the server
+        Creates a pong msg to be sent to the server
         """
         return createMsgWithEmptyBody("CLPONG")
 
 def createSuccessResponseToLoginRequest():
         """
-        TODO: purpose of the method
+        Creates server successful login response msg
         """
         paramDict = {}
         paramDict["result"] = 'success'
@@ -167,7 +179,7 @@ def createSuccessResponseToLoginRequest():
 
 def createFailResponseToLoginRequest():
         """
-        TODO: purpose of the method
+        Creates server failure login response msg
         """
         paramDict = {}
         paramDict["result"] = 'fail'
@@ -175,8 +187,9 @@ def createFailResponseToLoginRequest():
 
 def createLoginRequestMsg(username):
         """
-        Prepares a login (CLOGIN) msg to be sent to the server
-        userid: username
+        Creates client login msg
+
+        userid: username of the client
         """
         paramDict = {}
         paramDict["userid"] = username
@@ -184,7 +197,11 @@ def createLoginRequestMsg(username):
 
 def createSuccessResponseToPlayRequest(username, color, turn):
         """
-        TODO: purpose of the method
+        Creates server response to a successful play request sent by client
+
+        username: opponent's username
+        color: color of the user
+        turn: whose turn to begin playing
         """
         paramDict = {}
         paramDict["type"] = 'play'
@@ -196,7 +213,7 @@ def createSuccessResponseToPlayRequest(username, color, turn):
 
 def createFailResponseToPlayRequest():
         """
-        TODO: purpose of the method
+        Creates server response to a failing play request sent by client
         """
         paramDict = {}
         paramDict["type"] = 'play'
@@ -205,7 +222,8 @@ def createFailResponseToPlayRequest():
 
 def createSuccessResponseToWatchRequest(gObject):
         """
-        TODO: purpose of the method
+        Creates server response to a successful watch request sent by the client
+
         gObject refers to a Game object/instance
         """
         paramDict = {}
@@ -222,7 +240,7 @@ def createSuccessResponseToWatchRequest(gObject):
 
 def createFailResponseToWatchRequest():
         """
-        TODO: purpose of the method
+        Creates server response to a failing watch request sent by client
         """
         paramDict = {}
         paramDict["type"] = 'watch'
@@ -231,7 +249,7 @@ def createFailResponseToWatchRequest():
 
 def createSuccessResponseToLeaveRequest():
         """
-        TODO: purpose of the method
+        Creates server response to a successful leave request sent by the client
         """
         paramDict = {}
         paramDict["type"] = 'leave'
@@ -240,8 +258,7 @@ def createSuccessResponseToLeaveRequest():
 
 def createPlayRequest():
         """
-        Prepares a request msg to be sent to the server
-        request: play or watch or leave
+        Creates client play request
         """
         paramDict = {}
         paramDict["type"] = 'play'
@@ -249,8 +266,7 @@ def createPlayRequest():
 
 def createWatchRequest():
         """
-        Prepares a request msg to be sent to the server
-        request: play or watch or leave
+        Creates client watch request
         """
         paramDict = {}
         paramDict["type"] = 'watch'
@@ -258,8 +274,7 @@ def createWatchRequest():
 
 def createLeaveRequest():
         """
-        Prepares a request msg to be sent to the server
-        request: play or watch or leave
+        Creates client leave request
         """
         paramDict = {}
         paramDict["type"] = 'leave'
@@ -272,14 +287,19 @@ class BackgammonBoard(object):
 
         def __init__(self):
                 """
-                Default constructor. Called when a new game or set begins
+                Default constructor.
+
+                Called when a new game or set begins by the server
+                It may also be used by a Player or a Watcher
                 """
                 print('BackgammonBoard default constructor')
                 self.board = {} # may be changed later to sth else
 
         def __init__(self, boardState):
                 """
-                Copy Constructor. Called when watch request is accepted by the server
+                Copy Constructor. Called by a watcher when the watch request
+                of a client is accepted by the server so that watcher can make
+                its copy of boardState the same as of the server
                 """
                 print('BackgammonBoard copy constructor')
                 self.board = boardState

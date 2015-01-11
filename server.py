@@ -111,7 +111,7 @@ class Heartbeat(threading.Thread):
         message to User/Game thread.
         """
 
-        def __init__(self, queue, heartbeat=10, backtobackMissingCount=2, delayTime=5):
+        def __init__(self, queue, heartbeat=30, backtobackMissingCount=2, delayTime=5):
                 """
                 Constructor. Inits Heartbeat attributes
                 """
