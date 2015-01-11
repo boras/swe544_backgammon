@@ -235,8 +235,8 @@ class Client(object):
                         except ValueError:
                                 self.failedLeavingScreen()
                         if sMsg is not False:
-                                self.s.send(sMsg)
                                 self.state = 'LEAVING'
+                                self.s.send(sMsg)
                 elif self.state is 'PLAYING':
                         self.p.handleUserInput(userInput)
                 elif self.state is 'WATCHING':
@@ -635,8 +635,8 @@ class Watcher(Client):
                 except ValueError:
                         self.failedLeavingScreen()
                 if sMsg is not False:
-                        self.s.send(sMsg)
                         self.state = 'LEAVING'
+                        self.s.send(sMsg)
 
 def usage():
         """
