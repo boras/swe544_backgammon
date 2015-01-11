@@ -1,4 +1,13 @@
 
+def isEmpty(anyStructure):
+        """
+        TODO: purpose of the method
+        """
+        if anyStructure:
+                return False
+        else:
+                return True
+
 def createMsgWithEmptyBody(msgType):
         """
         Creates a msg whose body is empty
@@ -18,7 +27,6 @@ def createMsgWithFilledBody(msgType, paramDict):
         msg = str(msgType)
         #msg = msg + "\n\r\n{\n\t\""
         msg = msg + "\n\r\n{"
-        #msg = msg + str(paramList[0]) + "\": \"" + str(paramList[1]) + "\",\n}"
         for key in paramDict:
                 msg = msg + '\n\t\"' + str(key) + '\": \"' + str(paramDict[key]) + '\",'
         msg = msg + '\n}'
@@ -50,7 +58,7 @@ def getMsgBody(message):
                 try:
                         value = str(e[1][1:len(e[1])-1])
                 except IndexError:
-                        print('Aradigimiz BUG')
+                        print('BUG: getMsgBody')
                         print(message)
                         print(msg)
                         print('e: ', e)
@@ -59,6 +67,40 @@ def getMsgBody(message):
 
         #print(paramDict)
         return paramDict
+
+def createServerRejectMsg(boardstate):
+        """
+        Prepares a move msg to be sent to the server
+        move: move in backgammon notation
+        """
+        paramDict = {}
+        paramDict["boardstate"] = boardstate
+        return createMsgWithFilledBody("SRJCTM", paramDict)
+
+def createClientRejectMsg():
+        """
+        Prepares a move msg to be sent to the server
+        move: move in backgammon notation
+        """
+        return createMsgWithEmptyBody("CRJCTM")
+
+def createServerMoveMsg(move):
+        """
+        Prepares a move msg to be sent to the server
+        move: move in backgammon notation
+        """
+        paramDict = {}
+        paramDict["move"] = move
+        return createMsgWithFilledBody("SMOVEC", paramDict)
+
+def createClientMoveMsg(move):
+        """
+        Prepares a move msg to be sent to the server
+        move: move in backgammon notation
+        """
+        paramDict = {}
+        paramDict["move"] = move
+        return createMsgWithFilledBody("CMOVEC", paramDict)
 
 def createServerThrowDiceMsg(dice1, dice2):
         """
@@ -87,33 +129,33 @@ def createSvrnokMsg():
         """
         return createMsgWithEmptyBody("SVRNOK")
 
-def createPingMsg(msgId):
+def createPingMsgDebug(msgId):
         """
-        Prepares a ping (SVPING) msg to be sent to the client
+        Prepares a ping (SVPING) msg with an id to be sent to the client
         """
         paramDict = {}
         paramDict['msgId'] = str(msgId)
         return createMsgWithFilledBody("SVPING", paramDict)
 
-def createPongMsg(msgId):
+def createPongMsgDebug(msgId):
         """
-        Prepares a pong (CLPONG) msg to be sent to the server
+        Prepares a pong (CLPONG) msg with an id of SVPING to be sent to the server
         """
         paramDict = {}
         paramDict['msgId'] = str(msgId)
         return createMsgWithFilledBody("CLPONG", paramDict)
 
-#def createPingMsg():
-        #"""
-        #Prepares a ping (SVPING) msg to be sent to the client
-        #"""
-        #return createMsgWithEmptyBody("SVPING")
+def createPingMsg():
+        """
+        Prepares a ping (SVPING) msg to be sent to the client
+        """
+        return createMsgWithEmptyBody("SVPING")
 
-#def createPongMsg():
-        #"""
-        #Prepares a pong (CLPONG) msg to be sent to the server
-        #"""
-        #return createMsgWithEmptyBody("CLPONG")
+def createPongMsg():
+        """
+        Prepares a pong (CLPONG) msg to be sent to the server
+        """
+        return createMsgWithEmptyBody("CLPONG")
 
 def createSuccessResponseToLoginRequest():
         """
@@ -203,10 +245,6 @@ def createPlayRequest():
         """
         paramDict = {}
         paramDict["type"] = 'play'
-        #paramList = []
-        #paramList.append("type")
-        #paramList.append('play')
-        #return createMsgWithFilledBody("CREQST", paramList)
         return createMsgWithFilledBody("CREQST", paramDict)
 
 def createWatchRequest():
@@ -216,10 +254,6 @@ def createWatchRequest():
         """
         paramDict = {}
         paramDict["type"] = 'watch'
-        #paramList = []
-        #paramList.append("type")
-        #paramList.append('watch')
-        #return createMsgWithFilledBody("CREQST", paramList)
         return createMsgWithFilledBody("CREQST", paramDict)
 
 def createLeaveRequest():
@@ -229,24 +263,7 @@ def createLeaveRequest():
         """
         paramDict = {}
         paramDict["type"] = 'leave'
-        #paramList = []
-        #paramList.append("type")
-        #paramList.append('leave')
-        #return createMsgWithFilledBody("CREQST", paramList)
         return createMsgWithFilledBody("CREQST", paramDict)
-
-def createMoveMsg(move):
-        """
-        Prepares a move msg to be sent to the server
-        move: move in backgammon notation
-        """
-        paramDict = {}
-        paramDict["move"] = move
-        #paramList = []
-        #paramList.append("move")
-        #paramList.append(move)
-        #return createMsgWithFilledBody("CMOVEC", paramList)
-        return createMsgWithFilledBody("CMOVEC", paramDict)
 
 class BackgammonBoard(object):
         """

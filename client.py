@@ -3,6 +3,9 @@ import socket
 from backgammonlib import *
 import select
 
+#
+# Global Variables
+#
 rMsgSize = 1024
 
 class Client(object):
@@ -65,28 +68,6 @@ class Client(object):
                 msg = createLoginRequestMsg(self.username)
                 #print(msg)
                 self.s.send(msg)
-
-        #def handleLoginResponse(self):
-                #"""
-                #Handles login response sent by the server
-                #"""
-                #message = self.s.recv(rMsgSize)
-                #print(message)
-
-                #msg = message
-                #msgList = msg.split('\n')
-                #if msgList[0] != 'SLRSPS':
-                        #return False
-                #msgList = msgList[3].split(':')
-                #key = msgList[0].split('"')[1]
-                #if key != 'result':
-                        #return False
-                #val = msgList[1].split('"')[1]
-                ##print(val)
-
-                #if val == "fail":
-                        #return False
-                #return True
 
         def handleLoginResponse(self):
                 """
@@ -280,9 +261,13 @@ class Client(object):
                 elif header == 'SVPING':
                         #print('creating pong rMsg')
                         #print('SVPING - '),
-                        paramDict = getMsgBody(rMsg)
+                        #
+                        #paramDict = getMsgBody(rMsg)
+                        #sMsg = createPongMsgDebug(paramDict["msgId"])
+                        #
                         #print(paramDict["msgId"]),
-                        sMsg = createPongMsg(paramDict["msgId"])
+                        #
+                        sMsg = createPongMsg()
                         if sMsg is not False:
                                 self.s.send(sMsg)
                                 #print(' - CLPONG')
@@ -365,16 +350,20 @@ class Player(Client):
                 TODO: purpose of the method
                 """
                 Client.__init__(self, serverIP, username)
-                print('Player::__init__')
+                #print('Player::__init__')
                 self.client = client
                 self.s = self.client.getSocket()
                 self.playingState = 'DICE'
                 self.idsToCmd = {}
                 self.cmdFlags = {}
+                self.dice1 = -1
+                self.dice2 = -1
+                self.dice = -1
+                self.move = -1
                 # TODO: create Board Object
 
                 # parse message
-                print(rMsg)
+                #print(rMsg)
                 header = getMsgHeader(rMsg)
                 if header != 'SREQRP':
                         print('server request response is not SREQRP but ' + header)
@@ -427,43 +416,167 @@ class Player(Client):
                 # match info
                 print('You are playing with ' + self.opponent)
                 if int(self.turn) == 1:
-                        print('You turn to play')
+                        print('Your turn to play')
+                        self.client.enableInput()
                 else:
                         print('Not your turn to play')
                 # TODO: board info. create Board object
-                print('TODO: *****board state*****')
+                print('TODO: *****valid board state*****')
+                if int(self.turn) == 1:
+                        self.playingInputScreen()
+
+        def moveSendScreen(self):
+                """
+                TODO: purpose of the method
+                """
+                print("An example move: 8/4 6/4")
+                sys.stdout.write("> ")
+                sys.stdout.flush()
+
+        def moveReceiveScreen(self, move):
+                """
+                TODO: purpose of the method
+                """
+                print('opponent move: ' + move)
+                print('TODO: *****tentative board info*****')
                 self.playingInputScreen()
-                self.client.enableInput()
 
         def handleServerInput(self, rMsg):
                 """
                 TODO: purpose of the method
                 """
-                print('Player::handleServerInput')
-                print(rMsg)
-                #header = getMsgHeader(rMsg)
-                #if header is 'STDICE' and self.state is 'DICE':
+                #print('Player::handleServerInput')
+                #print(rMsg)
+                header = getMsgHeader(rMsg)
+                if header == 'STDICE':
+                        paramDict = getMsgBody(rMsg)
+                        self.dice1 = paramDict['dice1']
+                        self.dice2 = paramDict['dice2']
+                        self.dice = self.dice1 + '-' + self.dice2
+                        print('Dice is ' + self.dice)
+                        if self.playingState is 'WAITING_DICE': # active player
+                                self.cmdFlags['move'] = '(open)'
+                                self.playingState = 'WAITING_MOVE'
+                                self.moveSendScreen()
+                                self.client.enableInput()
+                        elif self.playingState is 'MOVE_RESULT':
+                                # opponent accepted our move
+                                # we are now a passive player
+                                self.playingState = 'DICE'
+                elif header == 'SMOVEC' and self.playingState is 'DICE':
+                        if self.turn != '0':
+                                print('SMOVEC message came to an active client')
+                                print('Points to a possible bug in client!!!')
+                                return
+                        self.cmdFlags['dice'] = '(open)'
+                        self.cmdFlags['reject'] = '(open)'
+                        paramDict = getMsgBody(rMsg)
+                        self.move = paramDict['move']
+                        self.moveReceiveScreen(self.move)
+                        self.playingState = 'MOVE_RESULT'
+                        self.client.enableInput()
+                elif header == 'SRJCTM':
+                        # TODO: print and update boardstate
+                        print("move: ( " + self.move + " )" + ' is rejected')
+                        paramDict = getMsgBody(rMsg)
+                        print('TODO: *****valid board info*****')
+                        #board = paramDict['boardstate']
+                        #print('board: ' + board)
+                        if self.playingState is 'MOVE_RESULT':
+                                if self.turn != '0':
+                                        print('SRJCTM message came to an active client')
+                                        print('Points to a possible bug in client!!!')
+                                        return
+                                self.turn = '1'
+                                self.cmdFlags['move'] = '(open)'
+                                self.playingState = 'WAITING_MOVE'
+                                self.moveSendScreen()
+                                self.client.enableInput()
+                else:
+                        print('unknown message')
+                        print(rMsg)
 
         def handleUserInput(self, userInput):
                 """
                 TODO: purpose of the method
                 """
-                print('Player::handleUserInput')
+                #print('Player::handleUserInput')
                 sMsg = False
-                if self.playingState is 'DICE':
+                if self.playingState is 'DICE' or self.playingState is 'MOVE_RESULT':
                         try:
                                 cmd = self.idsToCmd.get(int(userInput), None)
                                 if cmd is not None and self.cmdFlags[cmd] == '(open)':
+                                        #print('cmd: ' + cmd)
                                         self.client.disableInput()
-                                        sMsg = createClientThrowDiceMsg()
-                                        self.playingState = 'WAITING_DICE'
-                                        self.cmdFlags[cmd] = '(closed)'
+                                        if cmd == 'dice':
+                                                if self.playingState is 'MOVE_RESULT':
+                                                        # we accepted opponent's move
+                                                        # our turn to play
+                                                        self.playingState = 'DICE'
+                                                        self.cmdFlags['reject'] = '(closed)'
+                                                        self.turn = '1'
+                                                sMsg = createClientThrowDiceMsg()
+                                                self.playingState = 'WAITING_DICE'
+                                                self.cmdFlags[cmd] = '(closed)'
+                                        elif cmd == 'reject' and self.playingState is 'MOVE_RESULT':
+                                                # we rejected opponent's move
+                                                # opponent's turn to make a move again
+                                                self.playingState = 'DICE'
+                                                self.cmdFlags['dice'] = '(closed)'
+                                                sMsg = createClientRejectMsg()
+                                                self.cmdFlags[cmd] = '(closed)'
                                 else:
                                         self.playingInputScreen()
                         except ValueError:
                                 self.playingInputScreen()
                         if sMsg is not False:
                                 self.s.send(sMsg)
+                elif self.playingState is 'WAITING_MOVE':
+                        moveTuple = self.validateUserInput(userInput)
+                        if moveTuple is False:
+                                self.moveSendScreen()
+                                return
+                        self.client.disableInput()
+                        self.move = self.dice + ':' + userInput # backgammon notation
+                        print('move: ' + self.move)
+                        self.move = self.move.split('\n')[0]
+                        print('TODO: *****tentative board info*****')
+                        self.cmdFlags['move'] = '(closed)'
+                        self.playingState = 'MOVE_RESULT'
+                        if self.turn == '1':
+                                self.turn = '0' # our opponent's turn
+                        else:
+                                print('not our turn but we are in WAITING_MOVE state')
+                                print('Points to a possible bug in client!!!')
+                        sMsg = createClientMoveMsg(self.move)
+                        if sMsg is not False:
+                                self.s.send(sMsg)
+
+        def validateUserInput(self, userInput):
+                """
+                TODO: purpose of the method
+                """
+                #print('validateUserInput')
+                #print('=================')
+                try:
+                        part1 = userInput.split(' ')[0]
+                        part2 = userInput.split(' ')[1]
+                        firstPosCur = part1.split('/')[0]
+                        firstPosNext = part1.split('/')[1]
+                        secondPosCur = part2.split('/')[0]
+                        secondPosNext = part2.split('/')[1]
+                        if int(firstPosCur) <= 0 or int(firstPosCur) > 24:
+                                return False
+                        if int(firstPosNext) <= 0 or int(firstPosNext) > 24:
+                                return False
+                        if int(secondPosCur) <= 0 or int(secondPosCur) > 24:
+                                return False
+                        if int(secondPosNext) <= 0 or int(secondPosNext) > 24:
+                                return False
+                except:
+                        #print('validateUserInput: exception')
+                        return False
+                return (firstPosCur, firstPosNext, secondPosCur, secondPosNext)
 
 class Watcher(Client):
         """

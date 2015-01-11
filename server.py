@@ -9,9 +9,21 @@ import Queue
 import select
 import random
 
+#
 # Global Variables
-# userList is the server-wide list of users userList is accessed by different threads
-# Therefore, userListLock must be obtained before accessing it
+#
+# userList is the server-wide list of users. userList consists of entries
+# whose format is like:
+#        userList
+#               {
+#                username: [user_object_1, server_side_uds_of_user_object_1],
+#                username: [user_object_2, server_side_uds_of_user_object_2],
+#                ...
+#               }
+#
+# userList is accessed by different threads. Therefore, userListLock
+# must be obtained before accessing it.
+#
 userList = {}
 userListLock = threading.Lock()
 
@@ -20,15 +32,21 @@ commServerAddr='./CommServer_uds_socket'
 rMsgSize = 1024
 rUdsMsgSize = 128
 
+#
 # Classes
+#
 class CommServer(threading.Thread):
         """
-        TODO: purpose of the class
+        Communication server. It uses Unix Domain Sockets. Every client
+        should connect to CommServer to get a uds. It is used between Heartbeat
+        thread and User/Game thread. CommServer runs on its own thread. It puts
+        the username (unique for a session) of a User thread to a queue, which
+        is consumed by Heartbeat thread
         """
 
         def __init__(self, queue, nofActiveUsers, serverAddr=commServerAddr):
                 """
-                TODO: purpose of the method
+                Constructor. Inits CommServer attributes
                 """
                 threading.Thread.__init__(self)
                 self.queue = queue
@@ -38,7 +56,7 @@ class CommServer(threading.Thread):
 
         def setup(self):
                 """
-                TODO: purpose of the method
+                Setup server side of Unix Domain Socket
                 """
                 # Make sure the socket does not already exist
                 try:
@@ -61,7 +79,8 @@ class CommServer(threading.Thread):
 
         def run(self):
                 """
-                TODO: purpose of the method
+                Accepts connections from Users and puts their username to a queue
+                which is consumed by Heartbeat
                 """
                 if self.setup() is False:
                         print('CommServer setup() failed')
@@ -74,12 +93,27 @@ class CommServer(threading.Thread):
 
 class Heartbeat(threading.Thread):
         """
-        Representation of a backgammon user
+        Heartbeat thread sends SVPING messages to the clients and detects which
+        users are live or dead. If it detects that a user is dead, then it sends
+        a 'dead' message to that user. For the means of communication between
+        Heartbeat and User/Game threads, unix domain socket is used. Every User
+        connects to CommServer and obtains a uds, then starts waiting for
+        synchronization with Heartbeat. Upon connection from User, CommServer
+        awakes and puts the username of User to a queue, which is consumed by
+        Heartbeat. Heartbeat sleeps for 1 seconds and then wakes up. As it is
+        said, it has its own thread. One of the things it does during sleep
+        breaks is to check the queue filled by CommServer thread. If a new user
+        has arrived, then it wakes up relevant User thread to continue doing
+        its job.
+
+        For every heartbeat seconds, Heartbeat opens PING/PONG response window
+        for delayTime. If backtobackMissingCount is missed, then sends a 'dead'
+        message to User/Game thread.
         """
 
         def __init__(self, queue, heartbeat=10, backtobackMissingCount=2, delayTime=5):
                 """
-                TODO: purpose of the method
+                Constructor. Inits Heartbeat attributes
                 """
                 threading.Thread.__init__(self)
                 self.queue = queue
@@ -92,14 +126,16 @@ class Heartbeat(threading.Thread):
 
         def sendHeartbeatMsg(self):
                 """
-                TODO: purpose of the method
+                Sends SVPING message to every user in userList
                 """
-                sMsg = createPingMsg(self.msgId)
+                #sMsg = createPingMsgDebug(self.msgId)
+                sMsg = createPingMsg()
                 userListLock.acquire()
                 for user in userList:
                         s = userList[user][0].getUserSock()
-                        print('sendHeartbeatMsg to ' + str(userList[user][0])
-                              + ': msgId=' + str(self.msgId))
+                        #print('sendHeartbeatMsg to ' + str(userList[user][0])
+                              #+ ': msgId=' + str(self.msgId))
+                        print('sendHeartbeatMsg to ' + str(userList[user][0]))
                         try:
                                 s.send(sMsg)
                         except socket.error as err:
@@ -108,6 +144,7 @@ class Heartbeat(threading.Thread):
                                 pass
                         finally:
                                 userList[user][0].setHeartbeatSent(True)
+                # helpful in the case of debugging heartbeat
                 self.msgId += 1
                 if self.msgId == 100000:
                         self.msgId = 1
@@ -115,7 +152,8 @@ class Heartbeat(threading.Thread):
 
         def run(self):
                 """
-                TODO: purpose of the method
+                Main loop of Heartbeat. It is an infinite loop.
+                Implements a periodic timer
                 """
                 while True:
                         time.sleep(self.sleepTime)
@@ -145,7 +183,7 @@ class Heartbeat(threading.Thread):
 
         def checkUsers(self):
                 """
-                TODO: purpose of the method
+                Check user CLPONG responses to detect if there is dead client
                 """
                 global clientPongWinOpen
                 clientPongWinOpen = False
@@ -174,7 +212,7 @@ class WaitingRoom(object):
         """
         def __init__(self):
                 """
-                TODO: purpose of the method
+                Constructor. Inits WaitingRoom attributes
                 """
                 self.waitingRoom = Queue.Queue()
                 self.waitersList = {}
@@ -182,7 +220,7 @@ class WaitingRoom(object):
 
         def addToWaitingRoom(self, username):
                 """
-                TODO: purpose of the method
+                Adds user to waiting room. Every user has a corresponding entry in waitersList
                 """
                 # Queue is thread safe
                 #print('WaitingRoom: ' + username)
@@ -193,7 +231,12 @@ class WaitingRoom(object):
 
         def markAsInvalid(self, username):
                 """
-                TODO: purpose of the method
+                Removes an entry from waitersList. Generally called in the case of
+                intentional leaving or detection of remote peer socket close before
+                Heartbeat does its job.
+                Because a Queue is used and enumerating it is not efficient, there
+                is corresponding entry in a dict(average O(1)) for every valid user.
+                We remove the relevant entry to mark an entry as invalid in Queue.
                 """
                 # Dict is not thread safe
                 self.waitingRoomLock.acquire()
@@ -203,7 +246,7 @@ class WaitingRoom(object):
 
         def markAsValid(self, username):
                 """
-                TODO: purpose of the method
+                Mart an entry as valid. Not used
                 """
                 # Dict is not thread safe
                 self.waitingRoomLock.acquire()
@@ -212,7 +255,7 @@ class WaitingRoom(object):
 
         def getOpponent(self, username):
                 """
-                TODO: purpose of the method
+                Find an opponent if it exists
                 """
                 while True:
                         # Queue is thread safe
@@ -309,7 +352,7 @@ class Game(threading.Thread):
 
         def __init__(self, p1, p2):
                 """
-                TODO: purpose of the method
+                Constructor. Inits Game attributes
                 p1 and p2 are User objects
                 """
                 threading.Thread.__init__(self)
@@ -320,8 +363,8 @@ class Game(threading.Thread):
                 self.p1Username = p1.getUsername()
                 self.p2Username = p2.getUsername()
                 self.playerList = {}
-                activePlayer = -1
-                passivePlayer = -1
+                self.activePlayer = -1
+                self.passivePlayer = -1
                 self.poller = -1
                 self.fdToSocket = {}
                 self.p1Sock = p1.getUserSock()
@@ -335,20 +378,10 @@ class Game(threading.Thread):
                 self.p2Points = 0
                 self.gameState = 'DICE'
                 self.gameName = self.p1Username + '_vs_' + self.p2Username
-                # TODO: it has to point to a Board object
+                self.dice = -1
+                self.move = -1
+                # TODO: it has to point to a Board object not a string
                 self.board = 'board'
-                #
-                #activePlayerSenderList = []
-                #passivePlayerSenderList = []
-                #watcherList = []
-                #matchBroadcastList = []
-                #board
-                #score
-                #move
-                #dice
-                #moveResult
-                #playerList
-                #
 
         def decideTurn(self):
                 """
@@ -443,8 +476,6 @@ class Game(threading.Thread):
                         self.poller.register(s, READ_ONLY)
                 self.sockListLock.release()
 
-                #for p in self.playerList:
-                        #e = []
         def setup(self):
                 """
                 TODO: purpose of the method
@@ -461,8 +492,8 @@ class Game(threading.Thread):
                 """
                 TODO: purpose of the method
                 """
-                print('Game::cleanup')
-                print('=============')
+                #print('Game::cleanup')
+                #print('=============')
                 self.sockListLock.acquire()
                 for s in self.sockList:
                         uObject = self.sockList[s][1]
@@ -609,32 +640,132 @@ class Game(threading.Thread):
                 dice2 = random.choice(range(1, 7))
                 return (dice1, dice2)
 
-        def sendBroadcastMsg(self, sMsg):
+        def sendBroadcastMsg(self, sMsg, without):
                 """
                 TODO: purpose of the method
                 """
                 self.sockListLock.acquire()
                 for s in self.sockList:
-                        s.send(sMsg)
+                        if without == None or s != without:
+                                s.send(sMsg)
                 self.sockListLock.release()
 
-        def handleGameLogic(self, rMsg, s, uObject):
+        def changeActiveUser(self, uObject):
                 """
                 TODO: purpose of the method
                 """
-                if self.gameState == 'DICE' and self.activePlayer != uObject:
-                        # unrecognized message from the user
-                        # send SVRNOK
-                        uObject.sendSvrnokToClient(rMsg)
-                else:
-                         print('valid CTDICE')
-                         print(rMsg)
-                         # prepare STDICE msg
-                         dice = self.throwDice()
-                         sMsg = createServerThrowDiceMsg(dice[0], dice[1])
-                         self.sendBroadcastMsg(sMsg)
-                         #s.send(sMsg)
+                self.playerList[self.activePlayer] = 0
+                self.playerList[self.passivePlayer] = 1
+                self.activePlayer = self.passivePlayer
+                self.passivePlayer = uObject
 
+        def handleDiceState(self, rMsg, s, uObject):
+                """
+                Manages DICE state of the server
+
+                rMsg: Message coming from the user
+                uObject: Points to the User object, who sent the message
+                s: Points to the user socket, who sent the message
+                """
+                #print(rMsg)
+                header = getMsgHeader(rMsg)
+                paramDict = getMsgBody(rMsg)
+                if header != 'CTDICE' or not isEmpty(paramDict):
+                        # unrecognized message from the user, send SVRNOK
+                        uObject.sendSvrnokToClient(rMsg)
+                        return
+                # prepare STDICE msg
+                self.dice = self.throwDice()
+                sMsg = createServerThrowDiceMsg(self.dice[0], self.dice[1])
+                self.gameState = 'WAITING_MOVE'
+                self.sendBroadcastMsg(sMsg, None)
+
+        def handleWaitingMoveState(self, rMsg, s, uObject):
+                """
+                Manages WAITING_MOVE state of the server
+
+                rMsg: Message coming from the user
+                uObject: Points to the User object, who sent the message
+                s: Points to the user socket, who sent the message
+                """
+                #print(rMsg)
+                header = getMsgHeader(rMsg)
+                if header != 'CMOVEC':
+                        # unrecognized message from the user, send SVRNOK
+                        uObject.sendSvrnokToClient(rMsg)
+                        return
+                paramDict = getMsgBody(rMsg)
+                self.move = paramDict['move']
+                #print('move: ' + self.move)
+                # TODO: check message body for validation
+                #       move should be in backgammon notation
+                #
+                self.gameState = 'MOVE'
+                # prepare SMOVEC msg
+                sMsg = createServerMoveMsg(self.move)
+                self.gameState = 'MOVE_RESULT'
+                # change active user
+                self.changeActiveUser(uObject)
+                # send it all relevant parties except the sender
+                self.sendBroadcastMsg(sMsg, s)
+
+        def handleMoveResultState(self, rMsg, s, uObject):
+                """
+                Manages MOVE_RESULT state of the server
+
+                rMsg: Message coming from the user
+                uObject: Points to the User object, who sent the message
+                s: Points to the user socket, who sent the message
+                """
+                #print(rMsg)
+                paramDict = getMsgBody(rMsg)
+                if not isEmpty(paramDict):
+                        # unrecognized message from the user, send SVRNOK
+                        uObject.sendSvrnokToClient(rMsg)
+                        return
+                header = getMsgHeader(rMsg)
+                if header == 'CTDICE': # means ACCEPT
+                        # TODO: check set is over
+                        # TODO: check game is over
+                        self.gameState = 'DICE'
+                        # prepare STDICE msg
+                        self.dice = self.throwDice()
+                        sMsg = createServerThrowDiceMsg(self.dice[0], self.dice[1])
+                        self.gameState = 'WAITING_MOVE'
+                        self.sendBroadcastMsg(sMsg, None)
+                elif header == 'CRJCTM': # means REJECT
+                        # TODO send boardState to all relevant parties
+                        sMsg = createServerRejectMsg('board')
+                        self.gameState = 'WAITING_MOVE'
+                        # change active user
+                        self.changeActiveUser(uObject)
+                        self.sendBroadcastMsg(sMsg, None)
+                else:
+                        # unrecognized message from the user, send SVRNOK
+                        uObject.sendSvrnokToClient(rMsg)
+                        return
+
+        def handleGameLogic(self, rMsg, s, uObject):
+                """
+                Manages the game logic and messaging related to gaming
+
+                rMsg: Message coming from the user
+                uObject: Points to the User object, who sent the message
+                s: Points to the user socket, who sent the message
+                """
+                if self.activePlayer != uObject: # check if his/her turn
+                        # unrecognized message from the user, send SVRNOK
+                        uObject.sendSvrnokToClient(rMsg)
+                        return
+                if self.gameState == 'DICE':
+                        self.handleDiceState(rMsg, s, uObject)
+                elif self.gameState == 'WAITING_MOVE':
+                        self.handleWaitingMoveState(rMsg, s, uObject)
+                elif self.gameState == 'MOVE_RESULT':
+                        self.handleMoveResultState(rMsg, s, uObject)
+                else:
+                        print('unknown game state: ' + self.gameState)
+                        print('Points to a possible server bug!!!')
 
         def handleInternetSockets(self, s, uObject):
                 """
@@ -774,6 +905,7 @@ class User(threading.Thread):
         def __init__(self, csock, addr, heartbeat, serverAddr=commServerAddr):
                 """
                 Constructor of User class
+
                 csock: Client socket
                 addr: client address in the form of a tuple (ip, port)
                 heartbeat: Heartbeat object created by Server
@@ -992,8 +1124,16 @@ class User(threading.Thread):
                 #self.state = 'UNKNOWN'
                 #if self.gameInitializer is True:
                         #gameList.removeGameFromGameList(self.game)
-                self.closeSockets()
+                #
+                # If Heartbeat is going through userList, then it must have got userListLock.
+                # if we call closeSockets() before removeUserFromUserList(), then in the case of
+                # pongMissingCount == 2, Heartbeat will try to send 'dead' to a closed socket,
+                # which will cause "error: [Errno 32] Broken pipe". Here, we first call
+                # removeUserFromUserList(), which plays a synchronization point apart from its
+                # main role of removing a user from userList.
+                #
                 self.removeUserFromUserList()
+                self.closeSockets()
 
         def disablePolling(self):
                 """
@@ -1063,7 +1203,6 @@ class User(threading.Thread):
                 # waiting room before. If we don't make that entry valid again, WaitingRoom
                 # will think that it is invalid
                 #
-                #waitingRoom.markAsValid(self.username)
                 opponent = waitingRoom.getOpponent(self.username)
                 if opponent is False:
                         # No opponent to play
@@ -1169,9 +1308,9 @@ class User(threading.Thread):
                 TODO: purpose of the method
                 """
                 global clientPongWinOpen
-                paramDict = {}
+                #paramDict = {}
                 #print(rMsg)
-                paramDict = getMsgBody(rMsg)
+                #paramDict = getMsgBody(rMsg)
                 #print(paramDict)
                 if clientPongWinOpen is True:
                         self.pongMissingCount = -1
