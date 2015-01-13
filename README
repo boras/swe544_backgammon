@@ -1,0 +1,10 @@
+
+1. Starting server
+
+python server.py
+
+2. Starting client
+
+python client.py -s serveraddr -u username
+
+
