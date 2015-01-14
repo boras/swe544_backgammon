@@ -49,7 +49,7 @@ class Client(object):
                         CONNECTED  -> WATCH_REQ | PLAY_REQ
                         WATCH_REQ  -> WATCHING
                         PLAY_REQ   -> PLAYING
-                        LEAVE_REQ  -> LEFT
+                        LEAVE_REQ  -> LEAVING
                 """
                 self.serverIP = serverIP
                 self.port = 10001
@@ -494,6 +494,9 @@ class Player(Client):
                                 self.playingState = 'WAITING_MOVE'
                                 self.moveSendScreen()
                                 self.client.enableInput()
+                elif header == 'STEARD':
+                        print('opponent is dead. Closing session...')
+                        return False
                 else:
                         print('unknown message')
                         print(rMsg)
@@ -719,6 +722,9 @@ class Watcher(Client):
                         return self.handleMoveResponse(rMsg)
                 elif header == 'SRJCTM':
                         return self.handleRejectResponse(rMsg)
+                elif header == 'STEARD':
+                        print('One of the players is dead. Closing session...')
+                        return False
                 else:
                         print(rMsg)
 

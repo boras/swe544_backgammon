@@ -778,36 +778,74 @@ class Game(threading.Thread):
                         print('unknown game state: ' + self.gameState)
                         print('Points to a possible server bug!!!')
 
+        #def handleInternetSockets(self, s, uObject):
+                #"""
+                #TODO: purpose of the method
+                #"""
+                #rMsg = s.recv(rMsgSize)
+                ##print('handleInternetSockets: ', rMsg)
+                #header = getMsgHeader(rMsg)
+                #userType = uObject.getUserType()
+                #if header == 'CLPONG':
+                        ##print(self.gameName + ':CLPONG for ' + uObject.getUsername())
+                        #uObject.handlePongResponse(rMsg)
+                #elif header == 'CREQST' and userType is 'watcher':
+                        #paramDict = getMsgBody(rMsg)
+                        #request = paramDict['type']
+                        #if request != 'leave':
+                                ## unrecognized message from the user
+                                ## send SVRNOK
+                                #uObject.sendSvrnokToClient(rMsg)
+                                #return
+                        #self.removeWatcher(s, uObject)
+                #elif header == '' and (userType is 'watcher' or userType is 'player'):
+                        ## client socket is closed. Prepare to remove it
+                        #self.poller.unregister(s)
+                #elif s is self.p1Sock or s is self.p2Sock:
+                        #self.handleGameLogic(rMsg, s, uObject)
+                #else:
+                        ## client socket is closed. Prepare to remove it
+                        ## unrecognized message from the user
+                        ## send SVRNOK
+                        #uObject.sendSvrnokToClient(rMsg)
+
         def handleInternetSockets(self, s, uObject):
                 """
                 TODO: purpose of the method
                 """
-                rMsg = s.recv(rMsgSize)
-                #print('handleInternetSockets: ', rMsg)
-                header = getMsgHeader(rMsg)
-                userType = uObject.getUserType()
-                if header == 'CLPONG':
-                        #print(self.gameName + ':CLPONG for ' + uObject.getUsername())
-                        uObject.handlePongResponse(rMsg)
-                elif header == 'CREQST' and userType is 'watcher':
-                        paramDict = getMsgBody(rMsg)
-                        request = paramDict['type']
-                        if request != 'leave':
+                rMsgs = s.recv(rMsgSize)
+                #print('handleInternetSockets: ', rMsgs)
+                rMsgList = getMsgList(rMsgs)
+                count = 0
+                for i in range(len(rMsgList)):
+                        count += 1
+                        rMsg = rMsgList[i]
+                        header = getMsgHeader(rMsg)
+                        userType = uObject.getUserType()
+                        if header == 'CLPONG':
+                                #print(self.gameName + ':CLPONG for ' + uObject.getUsername())
+                                uObject.handlePongResponse(rMsg)
+                        elif header == 'CREQST' and userType is 'watcher':
+                                paramDict = getMsgBody(rMsg)
+                                request = paramDict['type']
+                                if request != 'leave':
+                                        # unrecognized message from the user
+                                        # send SVRNOK
+                                        uObject.sendSvrnokToClient(rMsg)
+                                        return
+                                self.removeWatcher(s, uObject)
+                        elif header == '' and (userType is 'watcher' or userType is 'player'):
+                                # client socket is closed. Prepare to remove it
+                                self.poller.unregister(s)
+                        elif s is self.p1Sock or s is self.p2Sock:
+                                self.handleGameLogic(rMsg, s, uObject)
+                        else:
+                                # client socket is closed. Prepare to remove it
                                 # unrecognized message from the user
                                 # send SVRNOK
                                 uObject.sendSvrnokToClient(rMsg)
-                                return
-                        self.removeWatcher(s, uObject)
-                elif header == '' and (userType is 'watcher' or userType is 'player'):
-                        # client socket is closed. Prepare to remove it
-                        self.poller.unregister(s)
-                elif s is self.p1Sock or s is self.p2Sock:
-                        self.handleGameLogic(rMsg, s, uObject)
-                else:
-                        # client socket is closed. Prepare to remove it
-                        # unrecognized message from the user
-                        # send SVRNOK
-                        uObject.sendSvrnokToClient(rMsg)
+                if count > 1:
+                        print('Game.handleInternetSockets:msgCount=' + str(count))
 
         def main_loop(self):
                 """
@@ -1294,25 +1332,52 @@ class User(threading.Thread):
                         print('unrecognized CREQST msg from client')
                         self.sendSvrnokToClient(rMsg)
 
+        #def handleUserMsg(self):
+                #"""
+                #TODO: purpose of the method
+                #"""
+                #rMsg = self.userSock.recv(rMsgSize)
+                ##print('handleUserMsg: ', rMsg)
+                #header = getMsgHeader(rMsg)
+                #if header == 'CLPONG':
+                        #self.handlePongResponse(rMsg)
+                #elif header == 'CREQST':
+                        #self.handleClientRequest(rMsg)
+                #elif header == '':
+                        ## client socket is closed. Prepare to remove it
+                        #self.poller.unregister(self.userSock)
+                        #self.fdToSocket.pop(self.userSock.fileno())
+                #else:
+                        ## unrecognized message from the user
+                        ## send SVRNOK
+                        #self.sendSvrnokToClient(rMsg)
+
         def handleUserMsg(self):
                 """
                 TODO: purpose of the method
                 """
-                rMsg = self.userSock.recv(rMsgSize)
-                #print('handleUserMsg: ', rMsg)
-                header = getMsgHeader(rMsg)
-                if header == 'CLPONG':
-                        self.handlePongResponse(rMsg)
-                elif header == 'CREQST':
-                        self.handleClientRequest(rMsg)
-                elif header == '':
-                        # client socket is closed. Prepare to remove it
-                        self.poller.unregister(self.userSock)
-                        self.fdToSocket.pop(self.userSock.fileno())
-                else:
-                        # unrecognized message from the user
-                        # send SVRNOK
-                        self.sendSvrnokToClient(rMsg)
+                rMsgs = self.userSock.recv(rMsgSize)
+                #print('handleUserMsg: ', rMsgs)
+                rMsgList = getMsgList(rMsgs)
+                count = 0
+                for i in range(len(rMsgList)):
+                        count += 1
+                        rMsg = rMsgList[i]
+                        header = getMsgHeader(rMsg)
+                        if header == 'CLPONG':
+                                self.handlePongResponse(rMsg)
+                        elif header == 'CREQST':
+                                self.handleClientRequest(rMsg)
+                        elif header == '':
+                                # client socket is closed. Prepare to remove it
+                                self.poller.unregister(self.userSock)
+                                self.fdToSocket.pop(self.userSock.fileno())
+                        else:
+                                # unrecognized message from the user
+                                # send SVRNOK
+                                self.sendSvrnokToClient(rMsg)
+                if count > 1:
+                        print('User.handleUserMsg:msgCount=' + str(count))
 
         def handlePongResponse(self, rMsg):
                 """

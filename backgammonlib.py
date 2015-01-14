@@ -36,7 +36,7 @@ def createMsgWithFilledBody(msgType, paramDict):
         #print(msg)
         return msg
 
-def getNofMessages(message):
+def getMsgList(message):
         """
         Gets and returns the number of messages in a message
         """
