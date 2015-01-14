@@ -1,3 +1,4 @@
+import sys, getopt
 import socket
 import threading
 from threading import Timer
@@ -1400,12 +1401,13 @@ class Server(object):
         Representation of a simple backgammon server
         """
 
-        def __init__(self, port=10001, nofActiveUsers=1000):
+        def __init__(self, serverAddr=-1, port=10001, nofActiveUsers=1000):
                 """
                 Initialize server instance
                 """
                 self.port = port
                 self.nofActiveUsers = nofActiveUsers
+                self.serverAddr = serverAddr
 
         def setupSocket(self):
                 """
@@ -1413,7 +1415,10 @@ class Server(object):
                 """
                 self.s = socket.socket()
                 self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self.host = socket.gethostname()
+                if self.serverAddr != -1:
+                        self.host = serverAddr
+                else:
+                        self.host = socket.gethostname()
                 print('Server IP address: ' + self.host + ' and port: ' + str(self.port))
                 self.s.bind((self.host, self.port))
                 self.s.listen(self.nofActiveUsers)
@@ -1455,8 +1460,39 @@ class Server(object):
                 """
                 raise NotImplementedError
 
+def usage():
+        """
+        TODO: purpose of the method
+        """
+        print('server.py -s <serverAddr>')
+        sys.exit(-1)
+
+def parseArgs(argv):
+        """
+        TODO: purpose of the method
+        """
+        serverAddr = ''
+        if sys.argv[1:] == []:
+                return None
+        try:
+                opts, args = getopt.getopt(argv, "s:")
+        except getopt.GetoptError:
+                usage()
+        for opt, arg in opts:
+                if opt == '-s':
+                        serverAddr = arg
+                else:
+                        usage()
+        #print('serverAddr is ' + serverAddr)
+        return serverAddr
+
+
 if __name__ == "__main__":
         waitingRoom = WaitingRoom()
         gameList = GameList()
-        s = Server()
+        serverAddr = parseArgs(sys.argv[1:])
+        if serverAddr is None:
+                s = Server()
+        else:
+                s = Server(serverAddr)
         s.run()
