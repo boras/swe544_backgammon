@@ -609,6 +609,7 @@ class Game(threading.Thread):
                 #print('==========')
                 self.sockListLock.acquire()
                 if self.gameState is 'OVER':
+                        self.sockListLock.release()
                         return False
                 sMsg = createSuccessResponseToWatchRequest(self)
                 uObject.getUserSock().send(sMsg)
