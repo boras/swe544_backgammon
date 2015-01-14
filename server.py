@@ -649,7 +649,15 @@ class Game(threading.Thread):
                 self.sockListLock.acquire()
                 for s in self.sockList:
                         if without == None or s != without:
-                                s.send(sMsg)
+                                try:
+                                        s.send(sMsg)
+                                except socket.error as err:
+                                        print('EXCEPTION in Game.sendBroadcastMsg()')
+                                        print('socketType: ' + self.sockList[s][0])
+                                        print('Belongs to: ' + self.sockList[s][1].getUsername())
+                                        #print(sMsg)
+                                        #print(err)
+                                        pass
                 self.sockListLock.release()
 
         def changeActiveUser(self, uObject):

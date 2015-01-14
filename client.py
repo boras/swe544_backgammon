@@ -416,6 +416,7 @@ class Player(Client):
                 """
                 # match info
                 print('You are playing with ' + self.opponent)
+                print('Your color is ' + self.color)
                 if int(self.turn) == 1:
                         print('Your turn to play')
                         self.client.enableInput()
@@ -588,36 +589,138 @@ class Watcher(Client):
                 TODO: purpose of the method
                 """
                 Client.__init__(self, serverIP, username)
-                print('Watcher::__init__')
+                #print('Watcher::__init__')
                 self.client = client
                 self.s = self.client.getSocket()
-                # TODO: create Board Object
+                self.p1Username = -1
+                self.p2Username = -1
+                self.p1Color = -1
+                self.p2Color = -1
+                self.pTurn = 1
+                self.gameScore = -1
+                self.board = -1
+                # TODO: create Board Object with self.board
 
-                # parse message
-                print(rMsg)
-                # TODO: parse rMsg and save match info
+                # parse rMsg and save match info
+                self.parseMsgSaveMatchInfo(rMsg)
 
                 # show watching screen
                 self.successfulWatchScreen()
+
+        def parseMsgSaveMatchInfo(self, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                #print(rMsg)
+                paramDict = getMsgBody(rMsg)
+                self.p1Username = paramDict['player1']
+                self.p2Username = paramDict['player2']
+                self.p1Color = paramDict['player1_color']
+                self.p2Color = paramDict['player2_color']
+                self.pTurn = paramDict['player_turn']
+                self.gameScore = paramDict['score']
+                self.board = paramDict['boardstate']
+                self.move = -1
+
+        def printMatchInfo(self):
+                """
+                TODO: purpose of the method
+                """
+                print(self.p1Username + ' is playing against ' + self.p2Username)
+                print('Game score: '  + self.gameScore + ' (p1:p2)')
+                print(self.p1Username + "'s color is " + self.p1Color)
+                print(self.p2Username + "'s color is " + self.p2Color)
+                if self.p1Username == self.pTurn:
+                        u = self.p1Username
+                else:
+                        u = self.p2Username
+                print(u + "'s turn to play")
 
         def successfulWatchScreen(self):
                 """
                 TODO: purpose of the method
                 """
-                print('TODO: *****match info*****')
+                print('*****match info*****')
+                self.printMatchInfo()
                 print('TODO: *****board state*****')
                 print("(3) Leave")
                 sys.stdout.write("> ")
                 sys.stdout.flush()
                 self.client.enableInput()
 
+        def handleLeaveResponse(self, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                paramDict = getMsgBody(rMsg)
+                request = paramDict['type']
+                result = paramDict['result']
+                if request == 'leave' and result == 'success':
+                        print('Server accepted leaving')
+                        return False # means leaving the polling loop
+                elif request == 'leave' and result == 'fail':
+                        print('Server rejected leaving')
+                        print('Points to a possible BUG in the server!!!')
+                else:
+                        print('unknown message')
+                        print(rMsg)
+                return True
+
+        def moveReceiveScreen(self):
+                """
+                TODO: purpose of the method
+                """
+                print('move: ' + self.move)
+                print('TODO: *****tentative board info*****')
+
+        def rejectReceiveScreen(self, board):
+                """
+                TODO: purpose of the method
+                """
+                print("move: ( " + self.move + " )" + ' is rejected')
+                print('TODO: *****valid board info*****')
+
+        def handleMoveResponse(self, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                paramDict = getMsgBody(rMsg)
+                self.move = paramDict['move']
+                self.moveReceiveScreen()
+
+        def handleRejectResponse(self, rMsg):
+                """
+                TODO: purpose of the method
+                """
+                paramDict = getMsgBody(rMsg)
+                board = paramDict['boardstate']
+                self.rejectReceiveScreen(board)
+                # TODO: update local board info with the correct layout
+                #       of board which is sent by the server
+
         def handleServerInput(self, rMsg):
                 """
                 TODO: purpose of the method
                 """
-                print('Watcher::handleServerInput')
-                print(rMsg)
+                #print('Watcher::handleServerInput')
+                #print('==========================')
+                #print(rMsg)
                 # TODO: parse and print messages sent by the server
+                header = getMsgHeader(rMsg)
+                if header == 'SREQRP':
+                        return self.handleLeaveResponse(rMsg)
+                elif header == 'STDICE':
+                        paramDict = getMsgBody(rMsg)
+                        self.dice1 = paramDict['dice1']
+                        self.dice2 = paramDict['dice2']
+                        self.dice = self.dice1 + '-' + self.dice2
+                        print('Dice is ' + self.dice)
+                elif header == 'SMOVEC':
+                        return self.handleMoveResponse(rMsg)
+                elif header == 'SRJCTM':
+                        return self.handleRejectResponse(rMsg)
+                else:
+                        print(rMsg)
 
         def handleUserInput(self, userInput):
                 """

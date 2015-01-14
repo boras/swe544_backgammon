@@ -36,6 +36,21 @@ def createMsgWithFilledBody(msgType, paramDict):
         #print(msg)
         return msg
 
+def getNofMessages(message):
+        """
+        Gets and returns the number of messages in a message
+        """
+        msgList = []
+        lidx = 0
+        hidx = 0
+        for i in range(message.count('}')):
+                hidx = message.find('}', lidx)
+                msg = message[lidx:hidx + 1]
+                #print(msg)
+                msgList.append(msg)
+                lidx = hidx + 1
+        return msgList
+
 def getMsgHeader(msg):
         """
         Gets and returns message header
@@ -60,11 +75,12 @@ def getMsgBody(message):
                 try:
                         value = str(e[1][1:len(e[1])-1])
                 except IndexError:
-                        print('BUG: getMsgBody')
+                        print('EXCEPTION in getMsgBody()')
                         print(message)
                         print(msg)
                         print('e: ', e)
                         print('key: ' + key)
+                        print('nofMessages: ' + str(len(getNofMessages(message))))
                 paramDict[key] = value
 
         #print(paramDict)
